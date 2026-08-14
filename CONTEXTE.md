@@ -121,6 +121,23 @@ L'app doit tourner depuis n'importe quel dossier, sur n'importe quelle machine.
 - **`seed_control` n'existe pas** dans l'Export (API) du noeud Director : c'est le
   widget UI `control_after_generate`. Ne pas le patcher.
 
+## Charger une page HTML de prompts
+
+Le bouton « Load prompts HTML » lit d'abord un bloc
+`<script type="application/json" data-prompts>` : c'est la voie exacte, sans
+heuristique. A defaut, l'app scrute les blocs `<pre>` et prend le titre qui
+precede comme nom de plan.
+
+Le format attendu est decrit dans `skill/prompt-html-export/SKILL.md`, a
+installer dans `~/.claude/skills/` sur chaque machine pour que l'assistant
+produise directement des pages chargeables.
+
+Piege corrige le 2026-08-14 : le dedoublonnage portait sur les 300 premiers
+caracteres. Une serie de prompts partageant le meme bloc d'ouverture (sujet,
+decor, style) etait vue comme des copies du premier, et un seul champ etait
+rempli. La comparaison porte desormais sur le texte entier, et la ligne d'etat
+annonce combien de champs ont REELLEMENT ete remplis.
+
 ## Mise a jour
 
 `/api/update` telecharge l'archive de la branche `main` du depot

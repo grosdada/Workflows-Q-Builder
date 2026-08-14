@@ -2694,12 +2694,17 @@
         try {
           const parsed = JSON.parse(script.textContent.trim());
           if (Array.isArray(parsed)) {
+            // Voie exacte : la page porte ses prompts en JSON, on ne devine
+            // rien. Les CUTs H3 passent aussi par la (voir le skill
+            // prompt-html-export pour le format attendu).
             return parsed.map((item, index) => ({
               name: item.name || item.title || `shot_${String(index + 1).padStart(2, "0")}`,
               seed: item.seed || "",
               positive: item.positive || item.prompt || item.text || "",
-              style: item.style || "global"
-            })).filter(item => item.positive).slice(0, 20);
+              cuts: Array.isArray(item.cuts) ? item.cuts : undefined,
+              style: item.style || "global",
+              custom_style: item.custom_style || ""
+            })).filter(item => item.positive || item.cuts).slice(0, 20);
           }
         } catch {}
       }
@@ -2712,9 +2717,14 @@
           const text = el.getAttribute("data-prompt") || el.getAttribute("data-positive") || el.value || el.textContent || "";
           const parsed = parsePromptBlock(text, rows.length);
           if (!parsed) continue;
-          const key = parsed.positive.slice(0, 300);
+          // Dedoublonnage sur le texte ENTIER. Sur les 300 premiers caracteres,
+          // une serie de prompts partageant le meme bloc d'ouverture (decor,
+          // personnage, style) etait vue comme huit copies du premier : un seul
+          // champ rempli, les autres vides.
+          const key = parsed.positive;
           if (seen.has(key)) continue;
           seen.add(key);
+          parsed.name = headingNameFor(el, rows.length) || parsed.name;
           rows.push(parsed);
           if (rows.length >= 20) return rows;
         }
@@ -2722,13 +2732,42 @@
       return rows;
     }
 
+    // Nom du plan : le titre qui precede le bloc dans la page, plutot que les
+    // premiers mots du prompt — identiques d'un prompt a l'autre dans une serie.
+    function headingNameFor(element, index) {
+      const container = element.closest("section, article, .block, div") || element;
+      let node = container;
+      for (let steps = 0; node && steps < 6; steps += 1) {
+        let sibling = node.previousElementSibling;
+        while (sibling) {
+          if (/^H[1-6]$/.test(sibling.tagName) || sibling.classList.contains("sub")) {
+            const raw = (sibling.textContent || "").trim();
+            // Un slug explicite (01_salt-flat) prime sur le titre litteraire.
+            const slug = raw.match(/\b\d{1,2}[_-][A-Za-z0-9][A-Za-z0-9_-]{1,40}/);
+            const cleaned = safeImportedName(slug ? slug[0] : raw, index);
+            if (cleaned) return cleaned;
+          }
+          sibling = sibling.previousElementSibling;
+        }
+        node = node.parentElement;
+      }
+      return "";
+    }
+
     async function loadPromptsHtmlFile(file) {
       const raw = await file.text();
       const rows = extractPromptsFromHtml(raw);
       if (!rows.length) throw new Error("Aucun prompt detecte dans ce HTML.");
-      document.querySelector("#shotCount").value = Math.min(rows.length, 20);
+      const kept = Math.min(rows.length, 20);
+      document.querySelector("#shotCount").value = kept;
       applyGeneratedShots(rows);
-      setStatus("#status", `${Math.min(rows.length, 20)} prompt(s) charges depuis le HTML.`);
+      const shots = getShotElements();
+      const filled = shots.filter(shot => shot.querySelector(".shot-prompt").value.trim()
+        || shot.querySelector(".shot-cuts")?.value.trim()).length;
+      // On compte ce qui a REELLEMENT atterri dans les champs : c'est la seule
+      // facon de voir qu'un prompt a ete perdu en route.
+      setStatus("#status", `${kept} prompt(s) charges depuis le HTML, ${filled} champ(s) remplis.`,
+        filled < kept);
     }
     async function stageShotImage(shot, file) {
       shot.dataset.imageFilename = file.name;
