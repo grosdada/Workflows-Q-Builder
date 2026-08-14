@@ -137,10 +137,11 @@ DEFAULTS = {
     "link_mode": "copy_project", # copy_project | junction | absolute | copy
 }
 
-# Dossier `input` de ComfyUI sur la machine de David — destination des copies en
-# mode copy_project. Confirmé par lui le 2026-08-09.
-COMFY_INPUT = (r"E:\Comfy-UI\new_ComfyUI_windows_portable_nvidia_cu121_or_cpu"
-               r"\ComfyUI_windows_portable\ComfyUI\input")
+# Dossier `input` de ComfyUI — destination des copies en mode copy_project.
+# Defaut neutre : le vrai chemin se met dans local_settings.json ou
+# comfy_input.txt, qui ne sont pas versionnes (voir comfy_input_dir()
+# dans queue_h3_multishot.py).
+COMFY_INPUT = r"C:\ComfyUI\input"
 
 SCHEMA_DOC = """
 brief.json

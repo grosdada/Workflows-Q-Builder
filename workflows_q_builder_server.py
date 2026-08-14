@@ -37,6 +37,25 @@ def guess_type(path):
     return mimetypes.guess_type(path)[0] or "application/octet-stream"
 
 
+def local_settings():
+    """Reglages propres a cette machine, jamais versionnes.
+
+    local_settings.json est optionnel ; absent, l'app garde ses valeurs par
+    defaut. Il evite d'ecrire un chemin de NAS ou un dossier ComfyUI dans un
+    depot public.
+    """
+    path = ROOT / "local_settings.json"
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        print("local_settings.json illisible, ignore")
+        return {}
+    allowed = ("workflow_browse_path", "comfy_server", "comfy_input")
+    return {key: data[key] for key in allowed if isinstance(data.get(key), str) and data[key]}
+
+
 def port_taken(port):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
         probe.settimeout(0.4)
@@ -92,7 +111,9 @@ class Handler(BaseHTTPRequestHandler):
             # n'est pas dans le PATH (ou ou l'app tourne avec le Python
             # embarque de ComfyUI), la commande generee doit designer le meme
             # interpreteur que celui qui fait tourner ce serveur.
-            self.send_json({"root": str(ROOT), "app": APP_HTML, "python": sys.executable})
+            payload = {"root": str(ROOT), "app": APP_HTML, "python": sys.executable}
+            payload.update(local_settings())
+            self.send_json(payload)
             return
         if parsed.path == "/api/workflow-read":
             self.handle_workflow_read(parse_qs(parsed.query))

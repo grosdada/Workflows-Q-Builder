@@ -138,11 +138,20 @@ def comfy_input_dir():
     """Dossier input de ComfyUI. Le skill le fige sur la machine de David ;
     ici un fichier comfy_input.txt pose a cote du script prend le dessus, pour
     que le dossier distribuable marche sur un autre poste."""
-    override = Path(__file__).resolve().parent / "comfy_input.txt"
+    here = Path(__file__).resolve().parent
+    override = here / "comfy_input.txt"
     if override.exists():
         value = override.read_text(encoding="utf-8-sig").strip()
         if value:
             return value
+    settings = here / "local_settings.json"
+    if settings.exists():
+        try:
+            value = json.loads(settings.read_text(encoding="utf-8-sig")).get("comfy_input")
+        except (OSError, json.JSONDecodeError):
+            value = None
+        if isinstance(value, str) and value.strip():
+            return value.strip()
     return director.COMFY_INPUT
 
 

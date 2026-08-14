@@ -736,7 +736,7 @@
     <section class="settings panel">
       <label>
         Dossier
-        <input id="folder" value="C:\Users\ALFRED HITCHCOCK\Documents\Codex\2026-05-22\tu-as-acces-a-mon-comfy\LTX Prompt Builder DEV">
+        <input id="folder" placeholder="Rempli automatiquement au lancement">
       </label>
       <label>
         <span class="ltx-only">Fichier prompts</span>
@@ -960,7 +960,7 @@
           <div class="load-workflow-row ltx-only field" id="loadWorkflowRow">
             <label for="loadWorkflowPath">Workflow charge</label>
             <div class="workflow-path-controls">
-              <input id="loadWorkflowPath" value="\\192.168.1.44\nas\Stable-diffusion-stuff\ComfyUI-workflows\Workflow-2026\Load-Worlflow" placeholder="Dossier ou fichier .json">
+              <input id="loadWorkflowPath" placeholder="Dossier ou fichier .json">
               <button id="browseWorkflow" type="button">Parcourir</button>
             </div>
             <input id="workflowFile" type="file" accept=".json,application/json" hidden>
@@ -3174,6 +3174,15 @@
         const data = await response.json();
         if (!data.root) return;
         if (data.python) pythonExe = data.python;
+        // Reglages locaux (local_settings.json), absents du depot.
+        if (data.workflow_browse_path) {
+          const field = document.querySelector("#loadWorkflowPath");
+          if (!field.value.trim()) field.value = data.workflow_browse_path;
+        }
+        if (data.comfy_server) {
+          const server = document.querySelector("#server");
+          if (server.value.trim() === "http://127.0.0.1:8188") server.value = data.comfy_server;
+        }
         document.querySelector("#folder").value = data.root;
         document.querySelector("#command").value = buildCommand();
       } catch {}
