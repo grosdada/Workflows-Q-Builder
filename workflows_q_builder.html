@@ -246,6 +246,28 @@
       min-height: 34px;
     }
 
+    .ref-cell {
+      display: flex;
+      gap: 6px;
+      align-items: stretch;
+      min-width: 0;
+    }
+
+    .ref-cell input { min-width: 0; }
+
+    .ref-cell button {
+      flex: 0 0 auto;
+      min-height: 34px;
+      padding: 0 10px;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+
+    .ref-cell button:hover { color: var(--text); }
+    .ref-cell button.busy { opacity: 0.5; }
+    .ref-cell button.done { color: var(--accent-2); border-color: var(--accent-2); }
+
     .h3-hint {
       margin: 0;
       color: var(--muted);
@@ -1219,6 +1241,12 @@
       "Image source ComfyUI": "ComfyUI source image",
       "Upload image": "Upload image",
       "Describe": "Describe",
+      "Image": "Image",
+      "Choisir une image et la deposer dans ComfyUI": "Pick an image and drop it into ComfyUI",
+      "Decrire l'image avec le modele choisi": "Describe the image with the selected model",
+      "Choisis d'abord une image avec le bouton Image de cette ligne.":
+        "Pick an image first with this row's Image button.",
+      "Lance l'app par le .bat pour copier l'image.": "Start the app with the .bat to copy the image.",
       "Chemin image local pour Python": "Local image path for Python",
       "No image": "No image",
       "Prompt": "Prompt",
@@ -1314,6 +1342,12 @@
       ["Dossier non detecte", "Folder not detected"],
       ["le serveur n'a pas renvoye de dossier", "the server returned no folder"],
       ["reponse ", "response "],
+      ["Rien a synchroniser avant de lancer.", "Nothing to sync before running."],
+      ["Image copiee dans ComfyUI:", "Image copied into ComfyUI:"],
+      ["Image copiee dans le dossier de l'app:", "Image copied into the app folder:"],
+      ["Renseigne comfy_input dans local_settings.json pour qu'elle aille directement dans ComfyUI.",
+       "Set comfy_input in local_settings.json so it goes straight into ComfyUI."],
+      ["decrite par", "described by"],
       ["Mise a jour disponible", "Update available"],
       ["Mise a jour installee:", "Update installed:"],
       ["fichier(s) mis a jour.", "file(s) updated."],
@@ -1790,10 +1824,17 @@
       if (!host || host.children.length) return;
       const retentionOptions = H3_RETENTIONS.map(value => `<option value="${value}">${value}</option>`).join("");
       host.innerHTML = Array.from({ length: H3_MAX_CHARACTERS }, (unused, index) => `
-        <div class="h3-ref-row">
+        <div class="h3-ref-row" data-index="${index}">
           <div class="ref-num">${index + 1}</div>
-          <input class="h3-ref-file" data-index="${index}" placeholder="perso${index + 1}.png">
-          <input class="h3-ref-description" data-index="${index}" placeholder="the rugged man, tousled dirty-blond hair, wearing ...">
+          <div class="ref-cell">
+            <input class="h3-ref-file" data-index="${index}" placeholder="perso${index + 1}.png">
+            <button type="button" class="ref-pick" title="Choisir une image et la deposer dans ComfyUI">Image</button>
+            <input type="file" class="h3-ref-input" accept="image/*" hidden>
+          </div>
+          <div class="ref-cell">
+            <input class="h3-ref-description" data-index="${index}" placeholder="the rugged man, tousled dirty-blond hair, wearing ...">
+            <button type="button" class="ref-describe" title="Decrire l'image avec le modele choisi">Describe</button>
+          </div>
           <select class="h3-ref-retention" data-index="${index}">${retentionOptions}</select>
         </div>
       `).join("");
@@ -3109,6 +3150,86 @@
         path.value = H3_TEMPLATE_DEFAULTS[event.target.value];
       }
       document.querySelector("#command").value = buildCommand();
+    });
+
+    // Images de reference : le fichier choisi est copie dans le dossier input de
+    // ComfyUI, la ou le noeud Director ira le chercher. On garde le File en
+    // memoire pour que Describe puisse le relire sans le redemander.
+    const h3RefFiles = new Map();
+
+    document.querySelector("#h3Refs").addEventListener("click", (event) => {
+      const pick = event.target.closest(".ref-pick");
+      if (pick) {
+        pick.closest(".h3-ref-row").querySelector(".h3-ref-input").click();
+      }
+    });
+
+    document.querySelector("#h3Refs").addEventListener("change", async (event) => {
+      if (!event.target.classList.contains("h3-ref-input")) return;
+      const row = event.target.closest(".h3-ref-row");
+      const file = event.target.files?.[0];
+      if (!row || !file) return;
+      const button = row.querySelector(".ref-pick");
+      const index = row.dataset.index;
+      h3RefFiles.set(index, file);
+      button.classList.add("busy");
+      try {
+        if (!location.protocol.startsWith("http")) throw new Error("Lance l'app par le .bat pour copier l'image.");
+        const projectDir = document.querySelector("#h3ProjectDir").value.trim();
+        const form = new FormData();
+        form.append("image", file);
+        form.append("project", projectDir.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || "");
+        const response = await fetch("/api/h3-ref-upload", { method: "POST", body: form });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `copie impossible (${response.status})`);
+        row.querySelector(".h3-ref-file").value = data.filename;
+        button.classList.add("done");
+        updateH3Hint();
+        document.querySelector("#command").value = buildCommand();
+        setStatus("#status", data.in_comfy
+          ? `Image copiee dans ComfyUI: ${data.subfolder}/${data.filename}. Rien a synchroniser avant de lancer.`
+          : `Image copiee dans le dossier de l'app: ${data.filename}. Renseigne comfy_input dans local_settings.json pour qu'elle aille directement dans ComfyUI.`,
+          !data.in_comfy);
+      } catch (error) {
+        setStatus("#status", error.message, true);
+      } finally {
+        button.classList.remove("busy");
+        event.target.value = "";
+      }
+    });
+
+    document.querySelector("#h3Refs").addEventListener("click", async (event) => {
+      const describe = event.target.closest(".ref-describe");
+      if (!describe) return;
+      const row = describe.closest(".h3-ref-row");
+      const file = h3RefFiles.get(row.dataset.index);
+      describe.classList.add("busy");
+      try {
+        requireKey();
+        if (!file) throw new Error("Choisis d'abord une image avec le bouton Image de cette ligne.");
+        const imageDataUrl = await readFileAsDataUrl(file);
+        const text = await callProvider({
+          system: "",
+          content: {
+            // La description sert a definir un <Subject N> : elle doit tenir en
+            // une phrase nominale, pas raconter une scene.
+            text: "Describe this character for a video model reference slot. One compact noun phrase, no sentence, "
+              + "starting like \"the rugged man, ...\": visible identity, hair, face, build, clothing, materials and colours. "
+              + "No action, no background, no camera, no interpretation. Under 40 words.",
+            imageDataUrl
+          },
+          maxTokens: 200
+        });
+        row.querySelector(".h3-ref-description").value = text.replace(/\s+/g, " ").trim();
+        describe.classList.add("done");
+        updateH3Hint();
+        document.querySelector("#command").value = buildCommand();
+        setStatus("#status", `Ref ${Number(row.dataset.index) + 1} decrite par ${document.querySelector("#apiModel").value}.`);
+      } catch (error) {
+        setStatus("#status", error.message, true);
+      } finally {
+        describe.classList.remove("busy");
+      }
     });
 
     document.querySelector("#h3Refs").addEventListener("input", () => {

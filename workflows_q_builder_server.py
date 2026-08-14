@@ -339,7 +339,59 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/update":
             self.handle_update()
             return
+        if parsed.path == "/api/h3-ref-upload":
+            self.handle_h3_ref_upload()
+            return
         self.send_error(404)
+
+    def handle_h3_ref_upload(self):
+        """Depose une image de reference la ou ComfyUI ira la chercher.
+
+        Le noeud Director resout `musedirector/<projet>/<fichier>` sous le
+        dossier input de ComfyUI. Copier l'image ailleurs obligerait a refaire
+        la synchro a la main avant chaque RUN — c'est justement l'etape qu'on
+        veut supprimer.
+        """
+        try:
+            filename, data = self.read_multipart_file("image")
+        except ValueError as exc:
+            self.send_json({"error": str(exc)}, 400)
+            return
+
+        project = ""
+        try:
+            project = self.last_fields.get("project", "")
+        except AttributeError:
+            project = ""
+        project = Path(project.strip()).name if project else ""
+
+        safe_name = Path(filename).name
+        comfy_input = local_settings().get("comfy_input", "")
+        if comfy_input and Path(comfy_input).is_dir():
+            target_dir = Path(comfy_input) / "musedirector"
+            if project:
+                target_dir = target_dir / project
+            placed_in_comfy = True
+        else:
+            # Sans dossier input connu, on garde l'image a portee plutot que de
+            # refuser : elle sera juste a copier a la main avant de lancer.
+            target_dir = UPLOAD_DIR
+            placed_in_comfy = False
+
+        try:
+            target_dir.mkdir(parents=True, exist_ok=True)
+            target = target_dir / safe_name
+            target.write_bytes(data)
+        except OSError as exc:
+            self.send_json({"error": f"Copie impossible vers {target_dir}: {exc}"}, 500)
+            return
+
+        self.send_json({
+            "filename": safe_name,
+            "path": str(target),
+            "in_comfy": placed_in_comfy,
+            "subfolder": f"musedirector/{project}" if project else "musedirector",
+        })
 
     def handle_update_check(self):
         current = read_version()
@@ -381,6 +433,9 @@ class Handler(BaseHTTPRequestHandler):
         filename = None
         filename_hint = None
         data = None
+        # Champs texte de la requete (project, filename_hint...), disponibles
+        # pour l'appelant apres le parsing.
+        self.last_fields = {}
         # On parcourt TOUTES les parties avant de conclure : l'ancien serveur
         # sortait de la boucle des qu'il tenait le fichier, donc filename_hint
         # (envoye apres le fichier par l'interface) n'etait jamais lu.
@@ -404,10 +459,14 @@ class Handler(BaseHTTPRequestHandler):
                 key, _, value = token.strip().partition("=")
                 params[key.strip().lower()] = value.strip().strip('"')
 
-            if params.get("name") == "filename_hint":
-                filename_hint = body.decode("utf-8", errors="ignore").strip()
+            name = params.get("name")
+            if name and "filename" not in params:
+                # Partie sans nom de fichier : c'est un champ texte.
+                self.last_fields[name] = body.decode("utf-8", errors="ignore").strip()
+            if name == "filename_hint":
+                filename_hint = self.last_fields.get("filename_hint", "")
                 continue
-            if params.get("name") != expected_field:
+            if name != expected_field:
                 continue
             filename = params.get("filename")
             data = body
