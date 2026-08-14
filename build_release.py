@@ -60,24 +60,40 @@ def main():
     if missing:
         raise SystemExit("fichiers absents du dossier de dev : " + ", ".join(missing))
 
-    if DIST.exists():
-        # Un serveur laisse ouvert garde le dossier : on le dit au lieu de
-        # planter sur une arborescence a moitie supprimee.
-        try:
-            shutil.rmtree(DIST)
-        except PermissionError as exc:
-            raise SystemExit(
-                f"Impossible de vider {DIST} : {exc}\n"
-                "Ferme la fenetre du serveur ou l'explorateur ouvert dessus, puis relance."
-            ) from exc
-    DIST.mkdir(parents=True)
+    # On ne supprime JAMAIS le dossier avant de le reconstruire : un serveur ou
+    # un explorateur ouvert dessus fait echouer la suppression du dossier
+    # lui-meme APRES que son contenu est parti, et il ne reste rien. Vecu.
+    # On ecrase fichier par fichier, puis on retire les fichiers devenus
+    # inutiles.
+    DIST.mkdir(parents=True, exist_ok=True)
 
+    expected = set()
     copied = 0
+    locked = []
     for name in FILES + OPTIONAL:
         source = HERE / name
-        if source.exists():
+        if not source.exists():
+            continue
+        expected.add(name)
+        try:
             shutil.copy2(source, DIST / name)
             copied += 1
+        except PermissionError:
+            locked.append(name)
+
+    for item in DIST.iterdir():
+        if item.is_file() and item.name not in expected:
+            try:
+                item.unlink()
+                print(f"  retire (plus dans la liste) : {item.name}")
+            except PermissionError:
+                locked.append(item.name)
+
+    if locked:
+        raise SystemExit(
+            "Fichiers verrouilles, dossier laisse en l'etat : " + ", ".join(sorted(set(locked)))
+            + "\nFerme la fenetre du serveur ou l'explorateur ouvert dessus, puis relance."
+        )
 
     for folder in WORK_DIRS:
         (DIST / folder).mkdir(exist_ok=True)
