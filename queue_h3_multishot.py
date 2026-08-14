@@ -187,6 +187,51 @@ def local_sync_command(settings):
     )
 
 
+def describe_comfy_rejection(exc):
+    """Rend lisible un refus de ComfyUI (HTTP 400 sur /prompt).
+
+    ComfyUI renvoie dans le corps de la reponse la raison exacte : noeud
+    manquant, modele absent, valeur hors bornes. La jeter pour n'afficher
+    qu'un code HTTP laissait sans piste — et le message parlait de serveur
+    injoignable alors que le serveur avait parfaitement repondu.
+    """
+    raw = ""
+    try:
+        raw = exc.read().decode("utf-8", errors="replace")
+    except Exception:
+        pass
+
+    lines = [f"ComfyUI a refuse le workflow (HTTP {exc.code})."]
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        if raw.strip():
+            lines.append(raw.strip()[:800])
+        return "\n".join(lines)
+
+    message = data.get("error")
+    if isinstance(message, dict):
+        detail = message.get("message") or message.get("type") or ""
+        extra = message.get("details") or ""
+        lines.append(f"  {detail} {extra}".rstrip())
+    elif message:
+        lines.append(f"  {message}")
+
+    for node_id, node in (data.get("node_errors") or {}).items():
+        node_type = node.get("class_type") or node.get("type") or ""
+        lines.append(f"  noeud {node_id} ({node_type}) :")
+        for error in node.get("errors") or []:
+            detail = error.get("message", "")
+            extra = error.get("details", "")
+            lines.append(f"    - {detail} {extra}".rstrip())
+
+    if len(lines) == 1 and raw.strip():
+        lines.append(raw.strip()[:800])
+    lines.append("Verifie que ComfyUI a bien les noeuds et les modeles de ce workflow, "
+                 "et qu'il tourne la version attendue.")
+    return "\n".join(lines)
+
+
 def queue_prompt(server, workflow, client_id):
     payload = json.dumps({"client_id": client_id, "prompt": workflow}).encode("utf-8")
     request = urllib.request.Request(
@@ -281,8 +326,15 @@ def main():
         if args.queue:
             try:
                 result = queue_prompt(args.server, workflow, client_id)
+            except urllib.error.HTTPError as exc:
+                # Une reponse HTTP n'est pas une panne de connexion : le serveur
+                # a repondu, et il explique pourquoi il refuse.
+                raise SystemExit(f"{label} : {describe_comfy_rejection(exc)}") from exc
             except urllib.error.URLError as exc:
-                raise SystemExit(f"ComfyUI injoignable sur {args.server}: {exc}") from exc
+                raise SystemExit(
+                    f"ComfyUI injoignable sur {args.server}: {exc}\n"
+                    "Verifie qu'il tourne et que l'adresse est la bonne."
+                ) from exc
             prompt_id = result.get("prompt_id", "unknown")
             queued.append((name, prompt_id))
             print(f"  -> file ComfyUI: {prompt_id}")

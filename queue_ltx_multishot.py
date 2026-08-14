@@ -509,6 +509,18 @@ def main():
 
         try:
             result = queue_prompt(args.server, workflow, client_id)
+        except urllib.error.HTTPError as exc:
+            # ComfyUI a repondu : il refuse le workflow et dit pourquoi dans le
+            # corps de la reponse. L'afficher evite un diagnostic a l'aveugle.
+            detail = ""
+            try:
+                detail = exc.read().decode("utf-8", errors="replace")[:1200]
+            except Exception:
+                pass
+            raise SystemExit(
+                f"ComfyUI a refuse le shot {index:02d} {name} (HTTP {exc.code}):\n{detail}\n"
+                "Verifie que ComfyUI a bien les noeuds et les modeles de ce workflow."
+            ) from exc
         except urllib.error.URLError as exc:
             raise SystemExit(f"Could not reach ComfyUI at {args.server}: {exc}") from exc
 
