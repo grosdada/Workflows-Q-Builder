@@ -882,6 +882,10 @@
           <input id="h3ProjectDir" placeholder="ground-run, ou un dossier complet">
         </label>
         <label>
+          Dossier input de ComfyUI
+          <input id="h3ComfyInput" placeholder="E:\ComfyUI_windows_portable\ComfyUI\input">
+        </label>
+        <label>
           Sous-dossier refs
           <input id="h3RefsSubdir" value="refs">
         </label>
@@ -1240,6 +1244,7 @@
       "Serveur ComfyUI": "ComfyUI server",
       "Projet H3 — reglages communs a toutes les scenes": "H3 project — settings shared by every scene",
       "Projet (un nom suffit)": "Project (a name is enough)",
+      "Dossier input de ComfyUI": "ComfyUI input folder",
       "ground-run, ou un dossier complet": "ground-run, or a full folder path",
       "Sous-dossier refs": "Refs subfolder",
       "Link mode": "Link mode",
@@ -1396,7 +1401,14 @@
        "The running server is older than this page: close the black window and start the .bat again."],
       ["Copie en cours...", "Copying..."],
       ["Copiee dans ComfyUI:", "Copied into ComfyUI:"],
-      ["Copiee dans le dossier de l'app:", "Copied into the app folder:"],
+      ["est dans le dossier de l'app. Renseigne le dossier input de ComfyUI ci-dessus, puis recharge cette image.",
+       "is in the app folder. Set the ComfyUI input folder above, then load this image again."],
+      ["Hors de ComfyUI:", "Outside ComfyUI:"],
+      ["Dossier input de ComfyUI enregistre. Les images de reference iront directement au bon endroit.",
+       "ComfyUI input folder saved. Reference images will land in the right place."],
+      ["Ce dossier n'existe pas:", "This folder does not exist:"],
+      ["Verifie le chemin, sinon les images resteront dans le dossier de l'app.",
+       "Check the path, otherwise images stay in the app folder."],
       ["Trouvee dans ComfyUI:", "Found in ComfyUI:"],
       ["Aucune image nommee", "No image named"],
       ["dans musedirector. Colle son chemin complet, ou utilise le bouton Image.",
@@ -3246,6 +3258,31 @@
         : null;
     }
 
+    // Dossier input de ComfyUI : enregistre dans local_settings.json, donc une
+    // seule saisie par machine. C'est ce qui decide si une image de reference
+    // atterrit la ou ComfyUI la cherchera.
+    document.querySelector("#h3ComfyInput").addEventListener("change", async (event) => {
+      const value = event.target.value.trim().replace(/^"+|"+$/g, "");
+      if (!location.protocol.startsWith("http")) return;
+      try {
+        const response = await fetch("/api/local-settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ comfy_input: value })
+        });
+        const stale = serverTooOld(response);
+        if (stale) throw stale;
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `enregistrement impossible (${response.status})`);
+        setStatus("#status", data.comfy_input_valid
+          ? "Dossier input de ComfyUI enregistre. Les images de reference iront directement au bon endroit."
+          : `Ce dossier n'existe pas: ${value}. Verifie le chemin, sinon les images resteront dans le dossier de l'app.`,
+          !data.comfy_input_valid);
+      } catch (error) {
+        setStatus("#status", error.message, true);
+      }
+    });
+
     document.querySelector("#h3Refs").addEventListener("click", (event) => {
       const pick = event.target.closest(".ref-pick");
       if (pick) {
@@ -3309,9 +3346,13 @@
         button.classList.add("done");
         updateH3Hint();
         document.querySelector("#command").value = buildCommand();
+        // Rouge seulement quand l'image n'est PAS la ou ComfyUI la cherchera :
+        // c'est un vrai probleme, le workflow ne la trouverait pas. Le message
+        // commence donc par le manque, pas par « copiee », qui se lisait comme
+        // une reussite en rouge.
         const message = data.in_comfy
           ? `Copiee dans ComfyUI: ${data.subfolder}/${data.filename}. Rien a synchroniser avant de lancer.`
-          : `Copiee dans le dossier de l'app: ${data.filename}. Renseigne comfy_input dans local_settings.json pour qu'elle aille directement dans ComfyUI.`;
+          : `Hors de ComfyUI: ${data.filename} est dans le dossier de l'app. Renseigne le dossier input de ComfyUI ci-dessus, puis recharge cette image.`;
         // Le retour est dans la ligne ET dans le panneau : selon l'endroit ou
         // on regarde, l'un des deux est hors de l'ecran.
         setRefState(row, message, data.in_comfy ? "ok" : "warn");
@@ -3352,7 +3393,7 @@
           button.classList.add("done");
           const message = data.in_comfy
             ? `Copiee dans ComfyUI: ${data.subfolder}/${data.filename}. Rien a synchroniser avant de lancer.`
-            : `Copiee dans le dossier de l'app: ${data.filename}. Renseigne comfy_input dans local_settings.json pour qu'elle aille directement dans ComfyUI.`;
+            : `Hors de ComfyUI: ${data.filename} est dans le dossier de l'app. Renseigne le dossier input de ComfyUI ci-dessus, puis recharge cette image.`;
           setRefState(row, message, data.in_comfy ? "ok" : "warn");
           updateH3Hint();
           document.querySelector("#command").value = buildCommand();
@@ -3893,6 +3934,7 @@
           const server = document.querySelector("#server");
           if (server.value.trim() === "http://127.0.0.1:8188") server.value = data.comfy_server;
         }
+        if (data.comfy_input) document.querySelector("#h3ComfyInput").value = data.comfy_input;
         document.querySelector("#folder").value = data.root;
         document.querySelector("#command").value = buildCommand();
       } catch (error) {

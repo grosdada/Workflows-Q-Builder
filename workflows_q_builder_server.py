@@ -369,7 +369,43 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/h3-ref-import":
             self.handle_h3_ref_import()
             return
+        if parsed.path == "/api/local-settings":
+            self.handle_local_settings()
+            return
         self.send_error(404)
+
+    def handle_local_settings(self):
+        """Ecrit un reglage propre a cette machine dans local_settings.json.
+
+        Sans le dossier input de ComfyUI, les images de reference atterrissent
+        a cote et le workflow ne les trouve pas. Le renseigner depuis
+        l'interface evite d'aller editer un fichier a la main sur chaque poste.
+        """
+        payload = self.read_json_body()
+        path = ROOT / "local_settings.json"
+        try:
+            current = json.loads(path.read_text(encoding="utf-8-sig")) if path.exists() else {}
+        except (OSError, json.JSONDecodeError):
+            current = {}
+
+        allowed = ("comfy_input", "workflow_browse_path", "comfy_server", "update_repo")
+        changed = {}
+        for key in allowed:
+            if key in payload and isinstance(payload[key], str):
+                current[key] = payload[key].strip()
+                changed[key] = current[key]
+        if not changed:
+            self.send_json({"error": "Rien a enregistrer"}, 400)
+            return
+
+        comfy_input = current.get("comfy_input", "")
+        valid = bool(comfy_input) and Path(comfy_input).is_dir()
+        try:
+            path.write_text(json.dumps(current, indent=2), encoding="utf-8")
+        except OSError as exc:
+            self.send_json({"error": f"Ecriture impossible: {exc}"}, 500)
+            return
+        self.send_json({"saved": changed, "comfy_input_valid": valid})
 
     def read_json_body(self):
         length = int(self.headers.get("Content-Length", "0"))
