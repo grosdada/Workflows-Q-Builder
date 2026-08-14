@@ -1048,6 +1048,14 @@
   </template>
 
   <script>
+    // Stockage navigateur tolerant : indisponible, l'app doit continuer a
+    // fonctionner sans memoriser les preferences, pas s'arreter net.
+    const store = {
+      get(key) { try { return localStorage.getItem(key); } catch { return null; } },
+      set(key, value) { try { localStorage.setItem(key, value); } catch {} },
+      remove(key) { try { localStorage.removeItem(key); } catch {} }
+    };
+
     const storedKeyName = "workflowsQBuilder.openaiApiKey";
     const askHistoryKey = "workflowsQBuilder.askHistory";
     // L'ancienne app stockait sous un autre prefixe : sans reprise, la cle et
@@ -1057,13 +1065,13 @@
 
     function migrateLegacyStorage() {
       try {
-        if (!localStorage.getItem(storedKeyName)) {
-          const legacyKey = localStorage.getItem(legacyKeyName);
-          if (legacyKey) localStorage.setItem(storedKeyName, legacyKey);
+        if (!store.get(storedKeyName)) {
+          const legacyKey = store.get(legacyKeyName);
+          if (legacyKey) store.set(storedKeyName, legacyKey);
         }
-        if (!localStorage.getItem(askHistoryKey)) {
-          const legacyHistory = localStorage.getItem(legacyHistoryKey);
-          if (legacyHistory) localStorage.setItem(askHistoryKey, legacyHistory);
+        if (!store.get(askHistoryKey)) {
+          const legacyHistory = store.get(legacyHistoryKey);
+          if (legacyHistory) store.set(askHistoryKey, legacyHistory);
         }
       } catch {}
     }
@@ -1074,7 +1082,7 @@
 
     const langStorageKey = "workflowsQBuilder.lang";
     const themeStorageKey = "workflowsQBuilder.theme";
-    let LANG = localStorage.getItem(langStorageKey) === "en" ? "en" : "fr";
+    let LANG = store.get(langStorageKey) === "en" ? "en" : "fr";
 
     // Textes complets. Les valeurs techniques (res_multistep, 16:9 (Widescreen),
     // copy_project...) ne sont pas traduites : ce sont les valeurs attendues par
@@ -1165,6 +1173,9 @@
       "Prompt": "Prompt",
       "Theme clair / sombre": "Light / dark theme",
       "Chercher une mise a jour": "Check for an update",
+      "Ouvre l'app avec Lancer_Workflows_Q_Builder.bat. Ouverte en double-cliquant le fichier HTML, elle ne peut ni trouver son dossier, ni copier les images, ni se mettre a jour.":
+        "Open the app with Lancer_Workflows_Q_Builder.bat. Opened by double-clicking the HTML file, it cannot find its folder, copy images, or update itself.",
+      "Rempli automatiquement au lancement": "Filled automatically at launch",
       "Installation de la mise a jour...": "Installing the update...",
       "Rien a remplacer : les fichiers etaient deja identiques.": "Nothing to replace: the files were already identical.",
       // placeholders
@@ -1247,6 +1258,11 @@
       ["L'ancienne version est sauvegardee dans _backup_previous.", "The previous version is saved in _backup_previous."],
       ["Ferme la fenetre noire et relance le .bat pour appliquer.", "Close the black window and run the .bat again to apply."],
       ["Reclique sur Update pour l'installer.", "Click Update again to install it."],
+      ["Saisis-le a la main, ou ferme tout et relance par le .bat.",
+       "Type it in manually, or close everything and start again with the .bat."],
+      ["Dossier non detecte", "Folder not detected"],
+      ["le serveur n'a pas renvoye de dossier", "the server returned no folder"],
+      ["reponse ", "response "],
       ["Mise a jour disponible", "Update available"],
       ["Mise a jour installee:", "Update installed:"],
       ["fichier(s) mis a jour.", "file(s) updated."],
@@ -1364,7 +1380,7 @@
 
     function applyLanguage(lang) {
       LANG = lang === "en" ? "en" : "fr";
-      localStorage.setItem(langStorageKey, LANG);
+      store.set(langStorageKey, LANG);
       document.documentElement.lang = LANG;
       document.querySelectorAll(".lang-option").forEach(button => {
         button.classList.toggle("active", button.dataset.lang === LANG);
@@ -1383,7 +1399,7 @@
     function applyTheme(theme) {
       const light = theme === "light";
       document.body.classList.toggle("theme-light", light);
-      localStorage.setItem(themeStorageKey, light ? "light" : "dark");
+      store.set(themeStorageKey, light ? "light" : "dark");
     }
 
     /* ------------------------------------------------- fournisseurs de LLM */
@@ -1433,14 +1449,14 @@
 
     function loadStoredKeys() {
       Object.keys(PROVIDERS).forEach(id => {
-        const stored = localStorage.getItem(keyStorageName(id));
+        const stored = store.get(keyStorageName(id));
         if (stored) apiKeys[id] = stored;
       });
       // Ancienne cle unique (epoque OpenAI seul) : elle devient la cle OpenAI.
-      const legacy = localStorage.getItem(storedKeyName);
+      const legacy = store.get(storedKeyName);
       if (legacy && !apiKeys.openai) {
         apiKeys.openai = legacy;
-        localStorage.setItem(keyStorageName("openai"), legacy);
+        store.set(keyStorageName("openai"), legacy);
       }
     }
 
@@ -2149,7 +2165,7 @@
 
     function getAskHistory() {
       try {
-        return JSON.parse(localStorage.getItem(askHistoryKey) || "[]");
+        return JSON.parse(store.get(askHistoryKey) || "[]");
       } catch {
         return [];
       }
@@ -2165,7 +2181,7 @@
         count,
         date: new Date().toLocaleString()
       });
-      localStorage.setItem(askHistoryKey, JSON.stringify(history.slice(0, 30)));
+      store.set(askHistoryKey, JSON.stringify(history.slice(0, 30)));
     }
 
     function renderAskHistory() {
@@ -2979,7 +2995,7 @@
 
     document.querySelector("#openKeyModal").addEventListener("click", () => {
       document.querySelector("#apiKeyInput").value = "";
-      document.querySelector("#rememberKey").checked = !!localStorage.getItem(keyStorageName(providerId()));
+      document.querySelector("#rememberKey").checked = !!store.get(keyStorageName(providerId()));
       document.querySelector("#keyModal").showModal();
       setTimeout(() => document.querySelector("#apiKeyInput").focus(), 50);
     });
@@ -2994,9 +3010,9 @@
       const remember = document.querySelector("#rememberKey").checked;
       apiKeys[id] = value;
       if (remember) {
-        localStorage.setItem(keyStorageName(id), value);
+        store.set(keyStorageName(id), value);
       } else {
-        localStorage.removeItem(keyStorageName(id));
+        store.remove(keyStorageName(id));
       }
       document.querySelector("#apiKeyInput").value = "";
       document.querySelector("#keyStatus").textContent = t(remember ? "Cle stockee sur cet ordinateur" : "Cle chargee en memoire");
@@ -3009,7 +3025,7 @@
     document.querySelector("#forgetKey").addEventListener("click", () => {
       const id = providerId();
       delete apiKeys[id];
-      localStorage.removeItem(keyStorageName(id));
+      store.remove(keyStorageName(id));
       document.querySelector("#apiKeyInput").value = "";
       document.querySelector("#rememberKey").checked = false;
       document.querySelector("#keyStatus").textContent = t("Aucune cle (") + providerConfig().keyPage + ")";
@@ -3048,7 +3064,7 @@
     });
 
     document.querySelector("#clearHistory").addEventListener("click", () => {
-      localStorage.removeItem(askHistoryKey);
+      store.remove(askHistoryKey);
       renderAskHistory();
       setStatus("#askStatus", "Historique efface.");
     });
@@ -3267,18 +3283,23 @@
     loadStoredKeys();
     syncProviderUi();
 
-    applyTheme(localStorage.getItem(themeStorageKey) === "light" ? "light" : "dark");
+    applyTheme(store.get(themeStorageKey) === "light" ? "light" : "dark");
     applyLanguage(LANG);
 
     // Le dossier de travail vient du serveur, pas du HTML : l'app doit pouvoir
     // etre copiee telle quelle sur une autre machine, a un autre emplacement.
     (async () => {
-      if (!location.protocol.startsWith("http")) return;
+      // Echouer en silence ici laissait le champ Dossier vide sans explication,
+      // et l'app parait cassee alors qu'elle a juste ete ouverte sans serveur.
+      if (!location.protocol.startsWith("http")) {
+        setStatus("#status", "Ouvre l'app avec Lancer_Workflows_Q_Builder.bat. Ouverte en double-cliquant le fichier HTML, elle ne peut ni trouver son dossier, ni copier les images, ni se mettre a jour.", true);
+        return;
+      }
       try {
         const response = await fetch("/api/env");
-        if (!response.ok) return;
+        if (!response.ok) throw new Error(`reponse ${response.status}`);
         const data = await response.json();
-        if (!data.root) return;
+        if (!data.root) throw new Error("le serveur n'a pas renvoye de dossier");
         if (data.python) pythonExe = data.python;
         // Reglages locaux (local_settings.json), absents du depot.
         if (data.workflow_browse_path) {
@@ -3291,7 +3312,9 @@
         }
         document.querySelector("#folder").value = data.root;
         document.querySelector("#command").value = buildCommand();
-      } catch {}
+      } catch (error) {
+        setStatus("#status", `Dossier non detecte (${error.message}). Saisis-le a la main, ou ferme tout et relance par le .bat.`, true);
+      }
     })();
   </script>
 </body>
