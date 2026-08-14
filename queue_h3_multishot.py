@@ -166,6 +166,11 @@ def local_sync_command(settings):
     if not link or settings.get("link_mode") != "copy_project" or not settings.get("project_dir"):
         return ""
     source = Path(settings["project_dir"]) / (settings.get("refs_subdir") or "refs")
+    # Le champ Projet accepte un simple nom depuis que l'app depose elle-meme
+    # les images dans ComfyUI. Sans dossier source reel, il n'y a rien a
+    # synchroniser et afficher la commande n'aurait aucun sens.
+    if not source.is_dir():
+        return ""
     target = Path(comfy_input_dir()) / "musedirector" / link
     return (
         f'New-Item -ItemType Directory -Force "{target}" | Out-Null\n'
