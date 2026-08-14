@@ -308,6 +308,42 @@
       min-height: 38px;
     }
 
+    /* Un seul controle par cellule : deux empiles rendaient cette ligne plus
+       haute que les autres et decalaient tout le bloc. Les boutons de pas sont
+       a cote du champ, pas dedans. */
+    .stepper {
+      display: flex;
+      gap: 4px;
+      align-items: stretch;
+    }
+
+    .stepper input { min-width: 0; }
+
+    .stepper .step {
+      flex: 0 0 30px;
+      min-height: 38px;
+      padding: 0;
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--muted);
+    }
+
+    .stepper .step:hover { color: var(--text); }
+
+    /* Sans valeur, il n'y a rien a ajuster : les boutons n'ont pas lieu d'etre. */
+    .stepper.empty .step { display: none; }
+
+    /* Fleches natives masquees : elles s'affichent dans le champ et font des
+       pas de 1, ce qui sort des frame counts valides (8n+1). */
+    .stepper input::-webkit-outer-spin-button,
+    .stepper input::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    .stepper input[type="number"] { -moz-appearance: textfield; }
+
     .ask-title-row {
       display: flex;
       align-items: center;
@@ -942,19 +978,22 @@
           </div>
           <div class="workflow-overrides ltx-only">
             <label>
-              Frame preset
-              <select id="framePreset">
-                <option value="">Workflow</option>
-                <option value="49">49</option>
-                <option value="73">73</option>
-                <option value="97">97</option>
-                <option value="121">121</option>
-                <option value="153">153</option>
-                <option value="193">193</option>
-                <option value="241">241</option>
-                <option value="289">289</option>
-              </select>
-              <input id="frameCount" type="number" min="1" placeholder="Custom frame">
+              Frames
+              <div class="stepper" id="frameStepper">
+                <input id="frameCount" type="number" list="framePresetList" min="9" step="8" placeholder="Workflow">
+                <button type="button" class="step" data-step="-8" title="8 frames de moins" tabindex="-1">&minus;</button>
+                <button type="button" class="step" data-step="8" title="8 frames de plus" tabindex="-1">+</button>
+              </div>
+              <datalist id="framePresetList">
+                <option value="49"></option>
+                <option value="73"></option>
+                <option value="97"></option>
+                <option value="121"></option>
+                <option value="153"></option>
+                <option value="193"></option>
+                <option value="241"></option>
+                <option value="289"></option>
+              </datalist>
             </label>
             <label>
               Format ratio
@@ -970,8 +1009,8 @@
             </label>
             <label class="ltx23-only">
               Size
-              <select id="sizePreset"></select>
-              <input id="videoSize" placeholder="Custom size">
+              <input id="videoSize" list="sizePresetList" placeholder="Workflow">
+              <datalist id="sizePresetList"></datalist>
             </label>
             <label class="ltx25-only">
               Megapixels
@@ -1160,7 +1199,9 @@
       "Workflow H3 T2V (format API)": "H3 T2V workflow (API format)",
       "Workflow preset": "Workflow preset",
       "Custom workflow...": "Custom workflow...",
-      "Frame preset": "Frame preset",
+      "Frames": "Frames",
+      "8 frames de moins": "8 frames fewer",
+      "8 frames de plus": "8 frames more",
       "Workflow": "Workflow",
       "Format ratio": "Format ratio",
       "Size": "Size",
@@ -2280,18 +2321,19 @@
     function refreshSizeOptions(resetToPreset = false) {
       const format = document.querySelector("#formatPreset")?.value || "16:9";
       const options = sizesByFormat[format] || sizesByFormat["16:9"];
-      const sizePreset = document.querySelector("#sizePreset");
+      const list = document.querySelector("#sizePresetList");
       const videoSize = document.querySelector("#videoSize");
-      if (!sizePreset || !videoSize) return;
+      if (!list || !videoSize) return;
       const previous = videoSize.value.trim();
-      sizePreset.innerHTML = options.map(size => `<option value="${size}">${size}</option>`).join("");
-      if (!resetToPreset && previous && options.includes(previous)) {
-        sizePreset.value = previous;
-        videoSize.value = previous;
-        return;
-      }
-      sizePreset.value = options[0];
+      list.innerHTML = options.map(size => `<option value="${size}"></option>`).join("");
+      if (!resetToPreset && previous && options.includes(previous)) return;
       videoSize.value = options[0];
+    }
+
+    function updateStepperState() {
+      const stepper = document.querySelector("#frameStepper");
+      if (!stepper) return;
+      stepper.classList.toggle("empty", !document.querySelector("#frameCount").value.trim());
     }
     function parseOverrideNumber(selector) {
       const value = document.querySelector(selector).value.trim();
@@ -2900,6 +2942,7 @@
       // moyen de lancer un workflow 2.3 en croyant etre en 2.5.
       refreshWorkflowPresets();
       refreshSizeOptions(false);
+      updateStepperState();
       syncLoadWorkflowVisibility();
       document.querySelector("#command").value = buildCommand();
     }
@@ -3017,23 +3060,27 @@
 
     ["#frameCount", "#videoSize", "#noiseSeed"].forEach(selector => {
       document.querySelector(selector).addEventListener("input", () => {
-        if (selector === "#frameCount") document.querySelector("#framePreset").value = "";
+        if (selector === "#frameCount") updateStepperState();
         document.querySelector("#command").value = buildCommand();
       });
     });
 
-    document.querySelector("#framePreset").addEventListener("change", () => {
-      document.querySelector("#frameCount").value = document.querySelector("#framePreset").value;
+    document.querySelector("#frameStepper").addEventListener("click", (event) => {
+      const button = event.target.closest(".step");
+      if (!button) return;
+      const field = document.querySelector("#frameCount");
+      const current = Number(field.value) || 0;
+      // Pas de 8 : les frame counts valides sont en 8n+1, donc partir d'une
+      // valeur valide et avancer de 8 y reste. Un pas de 1 sortirait de la regle
+      // a chaque clic.
+      const next = current + Number(button.dataset.step);
+      field.value = Math.max(9, next);
+      updateStepperState();
       document.querySelector("#command").value = buildCommand();
     });
 
     document.querySelector("#formatPreset").addEventListener("change", () => {
       refreshSizeOptions(true);
-      document.querySelector("#command").value = buildCommand();
-    });
-
-    document.querySelector("#sizePreset").addEventListener("change", () => {
-      document.querySelector("#videoSize").value = document.querySelector("#sizePreset").value;
       document.querySelector("#command").value = buildCommand();
     });
 
