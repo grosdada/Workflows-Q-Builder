@@ -1404,6 +1404,9 @@
       ["est dans le dossier de l'app. Renseigne le dossier input de ComfyUI ci-dessus, puis recharge cette image.",
        "is in the app folder. Set the ComfyUI input folder above, then load this image again."],
       ["Hors de ComfyUI:", "Outside ComfyUI:"],
+      ["Deplacee dans ComfyUI:", "Moved into ComfyUI:"],
+      ["Dossier input de ComfyUI enregistre pour cette machine. Recharge tes images de reference pour qu'elles y aillent.",
+       "ComfyUI input folder saved for this machine. Load your reference images again so they land there."],
       ["Dossier input de ComfyUI enregistre. Les images de reference iront directement au bon endroit.",
        "ComfyUI input folder saved. Reference images will land in the right place."],
       ["Ce dossier n'existe pas:", "This folder does not exist:"],
@@ -3261,8 +3264,7 @@
     // Dossier input de ComfyUI : enregistre dans local_settings.json, donc une
     // seule saisie par machine. C'est ce qui decide si une image de reference
     // atterrit la ou ComfyUI la cherchera.
-    document.querySelector("#h3ComfyInput").addEventListener("change", async (event) => {
-      const value = event.target.value.trim().replace(/^"+|"+$/g, "");
+    async function saveComfyInput(value) {
       if (!location.protocol.startsWith("http")) return;
       try {
         const response = await fetch("/api/local-settings", {
@@ -3275,12 +3277,35 @@
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || `enregistrement impossible (${response.status})`);
         setStatus("#status", data.comfy_input_valid
-          ? "Dossier input de ComfyUI enregistre. Les images de reference iront directement au bon endroit."
+          ? "Dossier input de ComfyUI enregistre pour cette machine. Recharge tes images de reference pour qu'elles y aillent."
           : `Ce dossier n'existe pas: ${value}. Verifie le chemin, sinon les images resteront dans le dossier de l'app.`,
           !data.comfy_input_valid);
+        // Les lignes deja renseignees portent peut-etre un message perime :
+        // on les reverifie avec le nouveau dossier.
+        if (data.comfy_input_valid) {
+          document.querySelectorAll(".h3-ref-row").forEach(row => {
+            const input = row.querySelector(".h3-ref-file");
+            if (input.value.trim()) handleTypedRefName(row, input);
+          });
+        }
       } catch (error) {
         setStatus("#status", error.message, true);
       }
+    }
+
+    // Enregistrement des la saisie, pas seulement a la sortie du champ : coller
+    // un chemin puis cliquer ailleurs dans la page ne declenchait rien, et le
+    // reglage semblait ignore.
+    let comfyInputTimer = null;
+    document.querySelector("#h3ComfyInput").addEventListener("input", (event) => {
+      clearTimeout(comfyInputTimer);
+      const value = event.target.value.trim().replace(/^"+|"+$/g, "");
+      comfyInputTimer = setTimeout(() => saveComfyInput(value), 600);
+    });
+
+    document.querySelector("#h3ComfyInput").addEventListener("change", (event) => {
+      clearTimeout(comfyInputTimer);
+      saveComfyInput(event.target.value.trim().replace(/^"+|"+$/g, ""));
     });
 
     document.querySelector("#h3Refs").addEventListener("click", (event) => {
@@ -3403,10 +3428,25 @@
         if (response.ok) {
           setRefState(row, `Trouvee dans ComfyUI: ${value}`, "ok");
           button.classList.add("done");
-        } else {
-          setRefState(row, `Aucune image nommee ${value} dans musedirector. Colle son chemin complet, ou utilise le bouton Image.`, "warn");
-          button.classList.remove("done");
+          return;
         }
+        // Absente de ComfyUI : elle a peut-etre ete deposee dans le dossier de
+        // l'app avant que le dossier input soit connu. Le serveur va voir.
+        const rescue = await fetch("/api/h3-ref-import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path: value, project: h3ProjectName() })
+        });
+        if (rescue.ok) {
+          const data = await rescue.json();
+          if (data.in_comfy) {
+            setRefState(row, `Deplacee dans ComfyUI: ${data.subfolder}/${data.filename}`, "ok");
+            button.classList.add("done");
+            return;
+          }
+        }
+        setRefState(row, `Aucune image nommee ${value} dans musedirector. Colle son chemin complet, ou utilise le bouton Image.`, "warn");
+        button.classList.remove("done");
       } catch (error) {
         setRefState(row, error.message, "warn");
         button.classList.remove("done");

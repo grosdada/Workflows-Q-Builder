@@ -433,8 +433,15 @@ class Handler(BaseHTTPRequestHandler):
 
         source = Path(raw_path).expanduser()
         if not source.is_file():
-            self.send_json({"error": f"Aucun fichier a ce chemin: {source}"}, 404)
-            return
+            # Nom seul : l'image a peut-etre deja ete deposee dans le dossier de
+            # l'app, avant que le dossier input de ComfyUI ne soit connu. On la
+            # recupere la plutot que de demander de la re-selectionner.
+            fallback = UPLOAD_DIR / Path(raw_path).name
+            if fallback.is_file():
+                source = fallback
+            else:
+                self.send_json({"error": f"Aucun fichier a ce chemin: {source}"}, 404)
+                return
         if source.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp", ".bmp"):
             self.send_json({"error": f"Ce n'est pas une image: {source.name}"}, 400)
             return
