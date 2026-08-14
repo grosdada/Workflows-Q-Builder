@@ -1926,12 +1926,19 @@
         issues.push(`${total.toFixed(1)}s > ${H3_MAX_SECONDS}s : decoupe en deux scenes (_a / _b), sinon OOM au chunk 2`);
       }
       const declared = brief.characters.length;
-      brief.cuts.forEach((cut, index) => {
+      // Un meme <Subject N> manquant est signale UNE fois pour la scene, pas
+      // une fois par CUT : sur six plans qui citent le meme personnage, la
+      // ligne d'etat devenait illisible et noyait les autres avertissements.
+      const missingSubjects = new Set();
+      brief.cuts.forEach(cut => {
         [...cut.text.matchAll(/<Subject (\d+)>/g)].forEach(match => {
-          if (Number(match[1]) > declared) {
-            issues.push(`CUT ${index + 1} cite <Subject ${match[1]}> mais ${declared} personnage(s) declare(s)`);
-          }
+          if (Number(match[1]) > declared) missingSubjects.add(Number(match[1]));
         });
+      });
+      [...missingSubjects].sort((a, b) => a - b).forEach(number => {
+        issues.push(`<Subject ${number}> cite mais ${declared} personnage(s) declare(s)`);
+      });
+      brief.cuts.forEach((cut, index) => {
         if (cut.text.includes('"') && !cut.speakers.length) {
           issues.push(`CUT ${index + 1} a du dialogue sans locuteur : la voix ne sera attribuee a personne`);
         }
@@ -1993,7 +2000,11 @@
       );
       const summary = `${briefs.length} scene(s) H3, ${totalSeconds.toFixed(1)}s au total. Refs: ${withImages}/${refs.length} avec image. `
         + (queueMode ? "Sortie: file ComfyUI (API)." : `Sortie: fichiers .json dans ${outDir}.`);
-      setStatus("#status", issues.length ? `${summary} A corriger — ${issues.join(" | ")}` : summary, issues.length > 0);
+      // Trois problemes affiches, le reste compte : une liste sans fin fait
+      // defiler la ligne d'etat et on ne lit plus rien du tout.
+      const shown = issues.slice(0, 3).join(" | ");
+      const extra = issues.length > 3 ? ` (+${issues.length - 3} autres)` : "";
+      setStatus("#status", issues.length ? `${summary} A corriger — ${shown}${extra}` : summary, issues.length > 0);
 
       const args = [
         `--briefs ${psSingleQuoted(briefsFile)}`,
@@ -2836,6 +2847,58 @@
       return rows;
     }
 
+    /* ------------------------------------- prompt multishot -> CUTs H3 */
+
+    const SHOT_WORD_NUMBERS = {
+      one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8,
+      nine: 9, ten: 10, eleven: 11, twelve: 12, half: 0.5
+    };
+
+    function shotNumber(value) {
+      const cleaned = String(value).toLowerCase().replace(",", ".").trim();
+      if (SHOT_WORD_NUMBERS[cleaned] !== undefined) return SHOT_WORD_NUMBERS[cleaned];
+      const number = Number(cleaned);
+      return Number.isFinite(number) ? number : null;
+    }
+
+    // Un prompt H3 multishot porte deja son decoupage : "Shot one, three
+    // seconds. ..." ou "[Shot 2] At 00:02.0, ...". En mode Director on peut donc
+    // le rendre utilisable au lieu de renvoyer l'utilisateur a la saisie a la
+    // main. Les blocs SUBJECT / STYLE / AUDIO ne sont pas des plans : ils vont
+    // ailleurs, ou nulle part, et on le dit.
+    function promptToCuts(text, totalSeconds = H3_MAX_SECONDS) {
+      const cuts = [];
+      String(text || "").split("\n").forEach(line => {
+        const trimmed = line.trim();
+        if (!/^(\[\s*shot\b|shot\s)/i.test(trimmed)) return;
+        let rest = trimmed.replace(/^\s*(?:\[\s*shot\s*\d+\s*\]|shot\s+(?:[a-z]+|\d+))\s*[,:.]?\s*/i, "");
+        let seconds = null;
+        const duration = rest.match(/^([a-z]+|\d+(?:[.,]\d+)?)\s+seconds?\b\s*[,.:;-]?\s*/i);
+        if (duration) {
+          seconds = shotNumber(duration[1]);
+          rest = rest.slice(duration[0].length);
+        }
+        // "At 00:02.700," est un horodatage de debut, pas du texte de plan.
+        rest = rest.replace(/^at\s+\d{1,2}:\d{2}(?:[.,]\d+)?\s*,?\s*/i, "");
+        if (rest.trim()) cuts.push({ seconds, text: rest.trim(), speakers: [] });
+      });
+
+      if (!cuts.length) return null;
+      const missing = cuts.filter(cut => !cut.seconds).length;
+      if (missing) {
+        // Sans duree annoncee, on repartit le plafond a parts egales : mieux
+        // qu'un refus, et la duree reste visible et modifiable.
+        const share = Math.round((totalSeconds / cuts.length) * 2) / 2;
+        cuts.forEach(cut => { if (!cut.seconds) cut.seconds = share; });
+      }
+      return cuts;
+    }
+
+    function extractLabelledBlock(text, label) {
+      const match = String(text || "").match(new RegExp(`^\\s*${label}\\s*[—:-]+\\s*(.+)$`, "mi"));
+      return match ? match[1].trim() : "";
+    }
+
     // Nom du plan : le titre qui precede le bloc dans la page, plutot que les
     // premiers mots du prompt — identiques d'un prompt a l'autre dans une serie.
     function headingNameFor(element, index) {
@@ -2864,12 +2927,69 @@
       if (!rows.length) throw new Error("Aucun prompt detecte dans ce HTML.");
       const kept = Math.min(rows.length, 20);
       document.querySelector("#shotCount").value = kept;
+
+      // En mode Director, un prompt multishot est converti en CUTs : c'est le
+      // meme decoupage, ecrit autrement. On ne le fait que si la page n'apporte
+      // pas deja ses propres cuts.
+      let converted = 0;
+      let styleLine = "";
+      let soundscape = "";
+      if (isH3Director()) {
+        rows.forEach(row => {
+          if (Array.isArray(row.cuts) && row.cuts.length) return;
+          const cuts = promptToCuts(row.positive);
+          if (!cuts) return;
+          row.cuts = cuts;
+          converted += 1;
+          styleLine = styleLine || extractLabelledBlock(row.positive, "STYLE");
+          soundscape = soundscape || extractLabelledBlock(row.positive, "AUDIO");
+        });
+      }
+
       applyGeneratedShots(rows);
+
+      // On compte ce qui a atterri dans le champ REELLEMENT visible du mode
+      // courant. Compter les deux masquait un decalage de mode : une page de
+      // prompts chargee en H3 Director remplissait des champs Prompt invisibles
+      // et annoncait « 8 champs remplis » pendant que l'ecran restait vide.
+      const wantsCuts = isH3Director();
       const shots = getShotElements();
-      const filled = shots.filter(shot => shot.querySelector(".shot-prompt").value.trim()
-        || shot.querySelector(".shot-cuts")?.value.trim()).length;
-      // On compte ce qui a REELLEMENT atterri dans les champs : c'est la seule
-      // facon de voir qu'un prompt a ete perdu en route.
+      const filled = shots.filter(shot => wantsCuts
+        ? shot.querySelector(".shot-cuts")?.value.trim()
+        : shot.querySelector(".shot-prompt").value.trim()).length;
+
+      if (wantsCuts && !filled) {
+        setStatus("#status", `${kept} prompt(s) lus, mais aucun ne contient de plans reconnaissables `
+          + `("Shot one, three seconds. ..." ou "[Shot 1] ..."). Le mode H3 Director attend des CUTs : `
+          + `bascule le moteur sur "T2V simple" pour utiliser ces prompts tels quels.`, true);
+        return;
+      }
+
+      if (converted) {
+        // Les blocs hors plans ne se perdent pas en silence : STYLE et AUDIO
+        // vont dans leurs champs s'ils sont libres, SUBJECT est abandonne
+        // puisqu'en Director les personnages viennent des images de reference.
+        const notes = [];
+        const styleField = document.querySelector("#h3StyleLine");
+        const soundField = document.querySelector("#h3Soundscape");
+        if (styleLine && styleField && !styleField.value.trim()) {
+          styleField.value = styleLine;
+          notes.push("bloc STYLE mis dans Style line");
+        }
+        if (soundscape && soundField && !soundField.value.trim()) {
+          soundField.value = soundscape;
+          notes.push("bloc AUDIO mis dans Soundscape");
+        }
+        notes.push("bloc SUBJECT ignore : en Director les personnages viennent des images de reference");
+        updateAllCutsInfo();
+        // buildCommand ecrit lui aussi dans la ligne d'etat : on le laisse
+        // passer d'abord, sinon son resume efface ce compte rendu.
+        document.querySelector("#command").value = buildCommand();
+        setStatus("#status", `${converted} prompt(s) multishot convertis en CUTs, ${filled} scene(s) remplies. `
+          + notes.join(", ") + ". Verifie les durees et declare tes personnages.", false);
+        return;
+      }
+
       setStatus("#status", `${kept} prompt(s) charges depuis le HTML, ${filled} champ(s) remplis.`,
         filled < kept);
     }
