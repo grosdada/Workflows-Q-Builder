@@ -111,20 +111,6 @@ def latest_commit():
     }
 
 
-def same_content(local, remote):
-    """Compare en ignorant les fins de ligne.
-
-    Le depot stocke du LF, la copie de travail sous Windows a souvent du CRLF :
-    sans cette normalisation, chaque mise a jour reecrirait tous les fichiers
-    texte pour rien, et signalerait un redemarrage a chaque fois.
-    """
-    if local == remote:
-        return True
-    if b"\x00" in local or b"\x00" in remote:
-        return False
-    return local.replace(b"\r\n", b"\n") == remote.replace(b"\r\n", b"\n")
-
-
 def install_update():
     """Telecharge l'archive de la branche et remplace les fichiers de l'app.
 
@@ -164,7 +150,7 @@ def install_update():
                 continue
             target = ROOT / relative
             new_bytes = item.read_bytes()
-            if target.exists() and same_content(target.read_bytes(), new_bytes):
+            if target.exists() and target.read_bytes() == new_bytes:
                 continue
             if target.exists():
                 saved = backup / relative

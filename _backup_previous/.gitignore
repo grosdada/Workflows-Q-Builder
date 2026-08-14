@@ -1,0 +1,20 @@
+# Fichiers de travail produits par l'app : ils changent a chaque usage et
+# n'ont rien a faire dans l'historique.
+ltx_builder_uploads/
+ltx_builder_workflows/
+h3_workflows/
+__pycache__/
+_ltx25_skill_tmp/
+ltx_custom_queue.json
+h3_custom_queue.json
+h3_t2v_queue.json
+comfy_input.txt
+python_path.txt
+local_settings.json
+
+# Ancienne app LTX, remplacee par Workflows Q-builder : gardee en local,
+# hors du depot (elle contient des chemins propres a la machine).
+ltx_prompt_queue_builder_v2.html
+ltx_builder_server.py
+Lancer_LTX_Prompt_Queue_Builder.bat
+ltx25_t2v_16mm73_J7_ui_reference.json

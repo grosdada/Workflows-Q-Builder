@@ -1,0 +1,11 @@
+# Les fichiers batch DOIVENT garder des fins de ligne Windows : un .bat en LF
+# fait deraper `goto` sur certaines versions de Windows, et ca ne se voit qu'a
+# l'execution sur la machine de destination. L'archive du depot, telechargee
+# par le bouton Update, doit donc les livrer en CRLF.
+*.bat text eol=crlf
+
+# Le reste est normalise en LF dans le depot ; la comparaison faite a la mise a
+# jour ignore les fins de ligne, donc les fichiers locaux gardent les leurs.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
