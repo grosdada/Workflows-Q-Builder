@@ -111,6 +111,17 @@ def latest_commit():
     }
 
 
+def force_crlf(data):
+    """Fins de ligne Windows pour les .bat.
+
+    L'archive zip de GitHub ignore l'attribut `eol=crlf` du .gitattributes
+    (verifie sur le depot) : un lanceur installe par mise a jour arriverait en
+    LF, ou `goto` peut deraper. On corrige donc a l'ecriture, sans dependre du
+    comportement de git ni de GitHub.
+    """
+    return data.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+
+
 def same_content(local, remote):
     """Compare en ignorant les fins de ligne.
 
@@ -171,7 +182,7 @@ def install_update():
                 saved.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(target, saved)
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(new_bytes)
+            target.write_bytes(force_crlf(new_bytes) if relative.suffix.lower() == ".bat" else new_bytes)
             updated.append(str(relative))
 
     version = latest_commit()
