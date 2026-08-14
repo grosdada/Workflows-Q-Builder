@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Exemple — deux prompts chargeables</title>
+<style>
+:root{--ink:#1A1917;--hull:#E9E4DA;--orange:#D9532B;--grey:#8C877E}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ink);color:var(--hull);
+ font:16px/1.65 "Helvetica Neue",Arial,sans-serif}
+main{max-width:900px;margin:0 auto;padding:48px 28px 100px}
+h1{font-size:28px;margin:0 0 6px}
+.meta{color:var(--grey);font-size:13px;margin-bottom:32px}
+h2{font-size:19px;margin:44px 0 4px;padding-top:20px;border-top:1px solid #2e2c29}
+.sub{color:var(--grey);font-size:12px;letter-spacing:.1em;text-transform:uppercase;margin-bottom:12px}
+pre{background:#0f0e0d;border:1px solid #2e2c29;border-left:3px solid var(--orange);
+ padding:18px 20px;overflow-x:auto;border-radius:2px;margin:0 0 10px}
+pre code{color:#ddd6c9;font-size:12.5px;line-height:1.6;white-space:pre-wrap;
+ font-family:Consolas,monospace}
+</style></head><body><main>
+
+<h1>Exemple de page de prompts</h1>
+<div class="meta">Deux prompts &middot; structure minimale qui se charge sans perte</div>
+
+<!--
+  Le bloc ci-dessous est la seule chose que l'app lit. Il est invisible a
+  l'ecran. Chaque prompt y figure en entier, dans l'ordre de la page.
+  Le reste du document n'existe que pour l'oeil humain.
+-->
+<script type="application/json" data-prompts>
+[
+  {
+    "name": "01_salt_flat",
+    "positive": "Multi-shot air-to-air sequence, six cuts, fifteen seconds total. NO MUSIC.\n\nSUBJECT — <Subject 1> is a twelve metre single-crew aircraft, pale warm grey hull, one circular nose intake that always leads.\n\nSTYLE — 1985 television documentary photography shot on 16mm, hard white midday light, heavy heat haze.\n\nShot one, three seconds. Very low over a dead flat white salt pan, <Subject 1> runs left to right and tears a low rooster tail of salt dust off the crust.\nShot two, three seconds. Tighter and level with <Subject 1>, heat shimmer eating its outline.\n\nAUDIO — diegetic only: a hard flat thruster drone, wind roar across an open helicopter door."
+  },
+  {
+    "name": "02_canyon",
+    "positive": "Multi-shot air-to-air sequence, six cuts, fifteen seconds total. NO MUSIC.\n\nSUBJECT — <Subject 1> is a twelve metre single-crew aircraft, pale warm grey hull, one circular nose intake that always leads.\n\nSTYLE — 1985 television documentary photography shot on 16mm, low raking sun, red rock and violet shadow.\n\nShot one, three seconds. Inside a wide red rock canyon at low sun, <Subject 1> follows the gorge below the rim.\nShot two, two seconds. Tighter on <Subject 1>, warm reflected light sliding up the pale grey hull.\n\nAUDIO — diegetic only: a hard flat thruster drone, turbulent air off the rock."
+  }
+]
+</script>
+
+<h2>La sebkha — passage à basse altitude</h2>
+<div class="sub">01_salt-flat &middot; 3+3+2+2+2+3 = 15 s</div>
+<pre><code>Multi-shot air-to-air sequence, six cuts, fifteen seconds total. NO MUSIC.
+
+SUBJECT — &lt;Subject 1&gt; is a twelve metre single-crew aircraft, pale warm grey hull, one circular nose intake that always leads.
+
+STYLE — 1985 television documentary photography shot on 16mm, hard white midday light, heavy heat haze.
+
+Shot one, three seconds. Very low over a dead flat white salt pan, &lt;Subject 1&gt; runs left to right and tears a low rooster tail of salt dust off the crust.
+Shot two, three seconds. Tighter and level with &lt;Subject 1&gt;, heat shimmer eating its outline.
+
+AUDIO — diegetic only: a hard flat thruster drone, wind roar across an open helicopter door.</code></pre>
+
+<h2>Le canyon — mesas et gorges</h2>
+<div class="sub">02_canyon &middot; 3+2+3+2+2+3 = 15 s</div>
+<pre><code>Multi-shot air-to-air sequence, six cuts, fifteen seconds total. NO MUSIC.
+
+SUBJECT — &lt;Subject 1&gt; is a twelve metre single-crew aircraft, pale warm grey hull, one circular nose intake that always leads.
+
+STYLE — 1985 television documentary photography shot on 16mm, low raking sun, red rock and violet shadow.
+
+Shot one, three seconds. Inside a wide red rock canyon at low sun, &lt;Subject 1&gt; follows the gorge below the rim.
+Shot two, two seconds. Tighter on &lt;Subject 1&gt;, warm reflected light sliding up the pale grey hull.
+
+AUDIO — diegetic only: a hard flat thruster drone, turbulent air off the rock.</code></pre>
+
+</main></body></html>

@@ -75,6 +75,12 @@ L'app sait retomber sur la structure visible. Pour que ce filet fonctionne :
   plan. Sans slug, elle prend le titre litteraire ; sans titre, elle fabrique un
   nom a partir des premiers mots du prompt — donc identique pour toute la serie.
 
+## Modele de page
+
+`assets/exemple.html` est une page complete et minimale : deux prompts, le bloc
+JSON, les titres numerotes et les blocs `<pre>` echappes. La lire avant d'ecrire
+une page pour la premiere fois evite de reinventer la structure.
+
 ## Verification avant de livrer
 
 Compter les elements du bloc JSON et les blocs `<pre>` visibles : les deux
