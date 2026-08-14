@@ -18,3 +18,8 @@ ltx_prompt_queue_builder_v2.html
 ltx_builder_server.py
 Lancer_LTX_Prompt_Queue_Builder.bat
 ltx25_t2v_16mm73_J7_ui_reference.json
+
+# Etat local de l'installation : version installee et sauvegarde de la
+# precedente. Propres a chaque machine, jamais partages.
+VERSION.json
+_backup_previous/
