@@ -175,14 +175,24 @@ def install_update():
                 continue
             target = ROOT / relative
             new_bytes = item.read_bytes()
-            if target.exists() and same_content(target.read_bytes(), new_bytes):
-                continue
+            # Pour les .bat on compare octet pour octet, apres avoir impose les
+            # fins de ligne Windows : une installation faite depuis le zip de
+            # GitHub arrive en LF, et la comparaison tolerante la laisserait
+            # ainsi indefiniment. La premiere mise a jour la repare.
+            is_batch = relative.suffix.lower() == ".bat"
+            if is_batch:
+                new_bytes = force_crlf(new_bytes)
+            if target.exists():
+                current = target.read_bytes()
+                identical = (current == new_bytes) if is_batch else same_content(current, new_bytes)
+                if identical:
+                    continue
             if target.exists():
                 saved = backup / relative
                 saved.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(target, saved)
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(force_crlf(new_bytes) if relative.suffix.lower() == ".bat" else new_bytes)
+            target.write_bytes(new_bytes)
             updated.append(str(relative))
 
     version = latest_commit()
