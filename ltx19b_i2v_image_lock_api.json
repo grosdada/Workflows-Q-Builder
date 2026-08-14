@@ -1,0 +1,212 @@
+{
+  "1": {
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint - LTX 19B"
+    },
+    "inputs": {
+      "ckpt_name": "ltx-2-19b-dev-fp8.safetensors"
+    }
+  },
+  "2": {
+    "class_type": "LTXAVTextEncoderLoader",
+    "_meta": {
+      "title": "LTXV Audio Text Encoder Loader - Gemma"
+    },
+    "inputs": {
+      "text_encoder": "gemma_3_12B_it_fp4_mixed.safetensors",
+      "ckpt_name": "ltx-2-19b-dev-fp8.safetensors",
+      "device": "default"
+    }
+  },
+  "3": {
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    },
+    "inputs": {
+      "image": "Extreme_macro_photograph_of_a_real_disgusting_living_inverteb_765df9aa-5794-4753-a3ae-59f19dd2b2b0_3.png"
+    }
+  },
+  "4": {
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Positive Prompt"
+    },
+    "inputs": {
+      "text": "",
+      "clip": [
+        "2",
+        0
+      ]
+    }
+  },
+  "5": {
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Negative Prompt"
+    },
+    "inputs": {
+      "text": "different creature, new creature, changed subject, changed silhouette, changed composition, changed camera angle, new viewpoint, new limbs, extra appendages, different anatomy, different background, different lighting, hallucinated details, redesigned creature, morphing identity, walking away, climbing, jumping, eating, low quality, blurry, smeared motion, flicker, exposure change, text, subtitles, watermark, borders, cuts, transitions, scene change",
+      "clip": [
+        "2",
+        0
+      ]
+    }
+  },
+  "6": {
+    "class_type": "LTXVImgToVideo",
+    "_meta": {
+      "title": "LTXV Image To Video - Image Lock"
+    },
+    "inputs": {
+      "width": 768,
+      "height": 512,
+      "length": 97,
+      "batch_size": 1,
+      "strength": 0.06,
+      "positive": [
+        "4",
+        0
+      ],
+      "negative": [
+        "5",
+        0
+      ],
+      "vae": [
+        "1",
+        2
+      ],
+      "image": [
+        "3",
+        0
+      ]
+    }
+  },
+  "7": {
+    "class_type": "LTXVConditioning",
+    "_meta": {
+      "title": "LTXV Conditioning"
+    },
+    "inputs": {
+      "frame_rate": 24,
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "6",
+        1
+      ]
+    }
+  },
+  "8": {
+    "class_type": "LTXVScheduler",
+    "_meta": {
+      "title": "LTXV Scheduler"
+    },
+    "inputs": {
+      "steps": 32,
+      "max_shift": 2.05,
+      "base_shift": 0.95,
+      "stretch": true,
+      "terminal": 0.1,
+      "latent": [
+        "6",
+        2
+      ]
+    }
+  },
+  "9": {
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "Sampler"
+    },
+    "inputs": {
+      "sampler_name": "euler"
+    }
+  },
+  "10": {
+    "class_type": "SamplerCustom",
+    "_meta": {
+      "title": "Sampler Custom"
+    },
+    "inputs": {
+      "add_noise": true,
+      "noise_seed": 1125119286042028,
+      "cfg": 1.4,
+      "model": [
+        "1",
+        0
+      ],
+      "positive": [
+        "7",
+        0
+      ],
+      "negative": [
+        "7",
+        1
+      ],
+      "sampler": [
+        "9",
+        0
+      ],
+      "sigmas": [
+        "8",
+        0
+      ],
+      "latent_image": [
+        "6",
+        2
+      ]
+    }
+  },
+  "11": {
+    "class_type": "VAEDecodeTiled",
+    "_meta": {
+      "title": "VAE Decode Tiled"
+    },
+    "inputs": {
+      "tile_size": 512,
+      "overlap": 64,
+      "temporal_size": 4096,
+      "temporal_overlap": 8,
+      "samples": [
+        "10",
+        0
+      ],
+      "vae": [
+        "1",
+        2
+      ]
+    }
+  },
+  "12": {
+    "class_type": "CreateVideo",
+    "_meta": {
+      "title": "Create Video"
+    },
+    "inputs": {
+      "fps": 24,
+      "images": [
+        "11",
+        0
+      ]
+    }
+  },
+  "13": {
+    "class_type": "SaveVideo",
+    "_meta": {
+      "title": "Save Video"
+    },
+    "inputs": {
+      "filename_prefix": "video/LTX19B_I2V_image_lock",
+      "format": "mp4",
+      "codec": "auto",
+      "video": [
+        "12",
+        0
+      ]
+    }
+  }
+}

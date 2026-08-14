@@ -1,0 +1,374 @@
+{
+  "1": {
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Load Checkpoint - LTX 19B"
+    },
+    "inputs": {
+      "ckpt_name": "ltx-2-19b-dev-fp8.safetensors"
+    }
+  },
+  "2": {
+    "class_type": "LTXAVTextEncoderLoader",
+    "_meta": {
+      "title": "LTXV Audio Text Encoder Loader - Gemma"
+    },
+    "inputs": {
+      "text_encoder": "gemma_3_12B_it_fp4_mixed.safetensors",
+      "ckpt_name": "ltx-2-19b-dev-fp8.safetensors",
+      "device": "default"
+    }
+  },
+  "3": {
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    },
+    "inputs": {
+      "image": "Extreme_macro_photograph_of_a_real_disgusting_living_inverteb_765df9aa-5794-4753-a3ae-59f19dd2b2b0_3.png"
+    }
+  },
+  "4": {
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Positive Prompt"
+    },
+    "inputs": {
+      "text": "",
+      "clip": [
+        "2",
+        0
+      ]
+    }
+  },
+  "5": {
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "Negative Prompt"
+    },
+    "inputs": {
+      "text": "low quality, blurry, smeared motion, warped anatomy, extra limbs, duplicate body, cartoon, CGI, plastic texture, over-sharpened, flicker, exposure change, luminosity change, text, subtitles, watermark, borders, frame artifacts, cuts, transitions, scene change",
+      "clip": [
+        "2",
+        0
+      ]
+    }
+  },
+  "6": {
+    "class_type": "LTXVImgToVideo",
+    "_meta": {
+      "title": "LTXV Image To Video - Base"
+    },
+    "inputs": {
+      "width": 768,
+      "height": 512,
+      "length": 121,
+      "batch_size": 1,
+      "strength": 0.2,
+      "positive": [
+        "4",
+        0
+      ],
+      "negative": [
+        "5",
+        0
+      ],
+      "vae": [
+        "1",
+        2
+      ],
+      "image": [
+        "3",
+        0
+      ]
+    }
+  },
+  "7": {
+    "class_type": "LTXVConditioning",
+    "_meta": {
+      "title": "LTXV Conditioning"
+    },
+    "inputs": {
+      "frame_rate": 24,
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "6",
+        1
+      ]
+    }
+  },
+  "8": {
+    "class_type": "CFGGuider",
+    "_meta": {
+      "title": "Base CFG Guider"
+    },
+    "inputs": {
+      "cfg": 3.5,
+      "model": [
+        "1",
+        0
+      ],
+      "positive": [
+        "7",
+        0
+      ],
+      "negative": [
+        "7",
+        1
+      ]
+    }
+  },
+  "9": {
+    "class_type": "LTXVScheduler",
+    "_meta": {
+      "title": "Base Scheduler"
+    },
+    "inputs": {
+      "steps": 40,
+      "max_shift": 2.05,
+      "base_shift": 0.95,
+      "stretch": true,
+      "terminal": 0.1,
+      "latent": [
+        "6",
+        2
+      ]
+    }
+  },
+  "10": {
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "Base Sampler"
+    },
+    "inputs": {
+      "sampler_name": "euler_ancestral"
+    }
+  },
+  "11": {
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "Base Noise"
+    },
+    "inputs": {
+      "noise_seed": 1125119286042028
+    }
+  },
+  "12": {
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "Base Sampling Pass"
+    },
+    "inputs": {
+      "noise": [
+        "11",
+        0
+      ],
+      "guider": [
+        "8",
+        0
+      ],
+      "sampler": [
+        "10",
+        0
+      ],
+      "sigmas": [
+        "9",
+        0
+      ],
+      "latent_image": [
+        "6",
+        2
+      ]
+    }
+  },
+  "13": {
+    "class_type": "LTXVCropGuides",
+    "_meta": {
+      "title": "Crop Guides"
+    },
+    "inputs": {
+      "positive": [
+        "7",
+        0
+      ],
+      "negative": [
+        "7",
+        1
+      ],
+      "latent": [
+        "12",
+        0
+      ]
+    }
+  },
+  "14": {
+    "class_type": "LatentUpscaleModelLoader",
+    "_meta": {
+      "title": "Load LTX Spatial Upscaler x2"
+    },
+    "inputs": {
+      "model_name": "ltx-2-spatial-upscaler-x2-1.0.safetensors"
+    }
+  },
+  "15": {
+    "class_type": "LTXVLatentUpsampler",
+    "_meta": {
+      "title": "Spatial Latent Upscale x2"
+    },
+    "inputs": {
+      "samples": [
+        "13",
+        2
+      ],
+      "upscale_model": [
+        "14",
+        0
+      ],
+      "vae": [
+        "1",
+        2
+      ]
+    }
+  },
+  "16": {
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "Load Distilled Upscale LoRA"
+    },
+    "inputs": {
+      "lora_name": "ltx-2-19b-distilled-lora-384.safetensors",
+      "strength_model": 1,
+      "model": [
+        "1",
+        0
+      ]
+    }
+  },
+  "17": {
+    "class_type": "CFGGuider",
+    "_meta": {
+      "title": "Upscale Refinement CFG Guider"
+    },
+    "inputs": {
+      "cfg": 1,
+      "model": [
+        "16",
+        0
+      ],
+      "positive": [
+        "13",
+        0
+      ],
+      "negative": [
+        "13",
+        1
+      ]
+    }
+  },
+  "18": {
+    "class_type": "ManualSigmas",
+    "_meta": {
+      "title": "Upscale Refinement Sigmas"
+    },
+    "inputs": {
+      "sigmas": "0.909375, 0.725, 0.421875, 0.0"
+    }
+  },
+  "19": {
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "Upscale Refinement Sampler"
+    },
+    "inputs": {
+      "sampler_name": "euler_ancestral"
+    }
+  },
+  "20": {
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "Upscale Refinement Noise"
+    },
+    "inputs": {
+      "noise_seed": 0
+    }
+  },
+  "21": {
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "Upscale Refinement Pass"
+    },
+    "inputs": {
+      "noise": [
+        "20",
+        0
+      ],
+      "guider": [
+        "17",
+        0
+      ],
+      "sampler": [
+        "19",
+        0
+      ],
+      "sigmas": [
+        "18",
+        0
+      ],
+      "latent_image": [
+        "15",
+        0
+      ]
+    }
+  },
+  "22": {
+    "class_type": "VAEDecodeTiled",
+    "_meta": {
+      "title": "VAE Decode Tiled"
+    },
+    "inputs": {
+      "tile_size": 512,
+      "overlap": 64,
+      "temporal_size": 4096,
+      "temporal_overlap": 8,
+      "samples": [
+        "21",
+        0
+      ],
+      "vae": [
+        "1",
+        2
+      ]
+    }
+  },
+  "23": {
+    "class_type": "CreateVideo",
+    "_meta": {
+      "title": "Create Video"
+    },
+    "inputs": {
+      "fps": 24,
+      "images": [
+        "22",
+        0
+      ]
+    }
+  },
+  "24": {
+    "class_type": "SaveVideo",
+    "_meta": {
+      "title": "Save Video"
+    },
+    "inputs": {
+      "filename_prefix": "video/LTX19B_I2V_quality_upscaled",
+      "format": "mp4",
+      "codec": "auto",
+      "video": [
+        "23",
+        0
+      ]
+    }
+  }
+}

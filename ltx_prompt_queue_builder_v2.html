@@ -1,0 +1,1653 @@
+﻿<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LTX Prompt Queue Builder</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #141619;
+      --panel: #202329;
+      --panel-2: #292e35;
+      --text: #f2f4f7;
+      --muted: #aab2bd;
+      --line: #3b424c;
+      --accent: #6bb7ff;
+      --accent-2: #acd86b;
+      --danger: #ff7070;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      width: min(1220px, calc(100vw - 32px));
+      margin: 24px auto 40px;
+    }
+
+    header {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+
+    .sub {
+      margin: 4px 0 0;
+      color: var(--muted);
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    .settings,
+    .ask {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+      margin-bottom: 16px;
+    }
+
+    .settings {
+      grid-template-columns: minmax(0, 1.4fr) minmax(180px, 0.7fr) minmax(180px, 0.7fr);
+    }
+
+    .ask-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 110px 90px 130px minmax(190px, 230px) 150px;
+      gap: 12px;
+      align-items: end;
+    }
+
+    .api-row {
+      display: none;
+      grid-template-columns: 1fr 180px;
+      gap: 12px;
+      align-items: end;
+    }
+
+    .api-row.active { display: grid; }
+
+    #loadPromptHtml {
+      background: #2b3440;
+      border-color: #5d7188;
+      color: #eaf4ff;
+    }
+
+    .style-custom {
+      display: none;
+      margin-top: 6px;
+      text-transform: none;
+      font-weight: 500;
+    }
+
+    .style-custom.active {
+      display: block;
+    }
+
+    .workflow-overrides label {
+      min-width: 0;
+    }
+
+    .workflow-overrides select,
+    .workflow-overrides input {
+      min-height: 38px;
+    }
+
+    .ask-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .key-state {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 40px;
+      color: var(--muted);
+    }
+
+    dialog {
+      width: min(520px, calc(100vw - 32px));
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--text);
+      padding: 0;
+    }
+
+    dialog::backdrop {
+      background: rgba(0, 0, 0, 0.68);
+    }
+
+    .modal {
+      display: grid;
+      gap: 14px;
+      padding: 18px;
+    }
+
+    .modal h2 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    .history-list {
+      display: grid;
+      gap: 8px;
+      max-height: 360px;
+      overflow: auto;
+    }
+
+    .history-item {
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #111315;
+    }
+
+    .history-text {
+      color: var(--muted);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 400px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
+    input,
+    textarea,
+    select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #111315;
+      color: var(--text);
+      font: inherit;
+      padding: 9px 10px;
+      outline: none;
+    }
+
+    textarea {
+      min-height: 112px;
+      resize: vertical;
+    }
+
+    input:focus,
+    textarea:focus,
+    select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(107, 183, 255, 0.18);
+    }
+
+    button {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-2);
+      color: var(--text);
+      font: inherit;
+      font-weight: 750;
+      padding: 10px 12px;
+      cursor: pointer;
+      min-height: 40px;
+    }
+
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #071018;
+    }
+
+    button.danger { color: var(--danger); }
+    button:hover { filter: brightness(1.08); }
+
+    .shots {
+      display: grid;
+      gap: 12px;
+    }
+
+    .shot {
+      padding: 12px;
+    }
+
+    .shot-top {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) 132px 180px auto auto;
+      gap: 10px;
+      align-items: end;
+      margin-bottom: 10px;
+    }
+
+    .shot-image-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(180px, 0.45fr) auto;
+      gap: 10px;
+      align-items: end;
+      margin-bottom: 10px;
+    }
+
+    .path-row {
+      margin-bottom: 10px;
+    }
+
+    .thumb-row {
+      display: grid;
+      grid-template-columns: 96px minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      margin: 2px 0 10px;
+    }
+
+    .thumb {
+      width: 96px;
+      height: 64px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #111315;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .image-status {
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+      min-height: 20px;
+    }
+
+    .num {
+      width: 34px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-2);
+      color: var(--accent-2);
+      font-weight: 800;
+    }
+
+    .shot textarea { min-height: 128px; }
+
+    .side {
+      position: sticky;
+      top: 16px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .side .panel { padding: 14px; }
+
+    .run-options {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 10px;
+      align-items: end;
+      margin-bottom: 12px;
+    }
+
+    .workflow-overrides {
+      display: grid;
+      grid-template-columns: minmax(90px, 0.8fr) minmax(90px, 0.8fr) minmax(130px, 1fr) minmax(90px, 0.8fr);
+      gap: 10px;
+      margin: 0 0 12px;
+    }
+
+    .load-workflow-row {
+      display: none;
+      margin: 0 0 12px;
+    }
+
+    .load-workflow-row.active {
+      display: grid;
+    }
+
+    .workflow-path-controls {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: end;
+    }
+
+    .check {
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+      text-transform: none;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .check input {
+      width: auto;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .actions.three {
+      grid-template-columns: minmax(90px, 0.8fr) minmax(90px, 0.8fr) minmax(130px, 1fr) minmax(90px, 0.8fr);
+    }
+
+    .command {
+      min-height: 260px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font: 12px/1.45 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    }
+
+    .status {
+      min-height: 20px;
+      margin: 10px 0 0;
+      color: var(--muted);
+    }
+
+    .warn { color: var(--danger); }
+
+    @media (max-width: 980px) {
+      .layout,
+      .settings,
+      .ask-grid,
+      .api-row,
+      .workflow-overrides,
+      .workflow-path-controls {
+        grid-template-columns: 1fr;
+      }
+
+      .side { position: static; }
+
+      .shot-top {
+        grid-template-columns: 34px minmax(0, 1fr) 132px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>LTX Prompt Queue Builder</h1>
+        <p class="sub">Prepare des prompts multishot et genere la commande PowerShell pour ComfyUI.</p>
+      </div>
+    </header>
+
+    <section class="ask panel">
+      <div class="ask-grid">
+        <label>
+          <span class="ask-title-row">
+            <span>ASK GPT</span>
+            <span class="ask-title-row">
+              <button id="clearAsk" type="button">Clear</button>
+              <button id="openHistory" type="button">Historique</button>
+              <button id="loadPromptHtml" type="button">Load prompts HTML</button>
+              <input id="promptHtmlFile" type="file" accept=".html,.htm,text/html" hidden>
+            </span>
+          </span>
+          <textarea id="askText" placeholder="Decris la scene, le style, les points de vue, le rythme, ce qu'il faut eviter..."></textarea>
+        </label>
+        <label>
+          Nombre de shots
+          <input id="shotCount" type="number" min="1" max="20" value="5">
+        </label>
+        <label>
+          LTX
+          <select id="ltxVersion">
+            <option value="2.5" selected>2.5</option>
+            <option value="2.3">2.3</option>
+          </select>
+        </label>
+        <label>
+          Mode
+          <select id="aiMode">
+            <option value="api">API OpenAI</option>
+            <option value="local">LOCAL / Codex</option>
+          </select>
+        </label>
+        <label>
+          Camera / Style preset
+          <select id="globalStylePreset"></select>
+          <textarea id="globalCustomStyle" class="style-custom" placeholder="Custom camera/style prompt"></textarea>
+        </label>
+        <button class="primary" id="askGenerate">Remplir les shots</button>
+      </div>
+      <div class="api-row" id="apiRow">
+        <label>
+          Cle API OpenAI
+          <div class="key-state">
+            <button id="openKeyModal" type="button">Ajouter / changer</button>
+            <span id="keyStatus">Aucune cle en memoire</span>
+          </div>
+        </label>
+        <label>
+          Modele
+          <select id="apiModel">
+            <option value="gpt-5.4-mini">gpt-5.4-mini</option>
+            <option value="gpt-5.5">gpt-5.5</option>
+            <option value="gpt-5.4">gpt-5.4</option>
+            <option value="gpt-5.4-nano">gpt-5.4-nano</option>
+            <option value="gpt-4.1">gpt-4.1</option>
+          </select>
+        </label>
+      </div>
+      <p class="status" id="askStatus"></p>
+    </section>
+
+    <dialog id="keyModal">
+      <form class="modal" method="dialog">
+        <h2>Cle API OpenAI</h2>
+        <label>
+          Cle
+          <input id="apiKeyInput" type="password" autocomplete="off" placeholder="sk-...">
+        </label>
+        <label>
+          <span>
+            <input id="rememberKey" type="checkbox">
+            Se souvenir de la cle sur cet ordinateur
+          </span>
+        </label>
+        <div class="actions">
+          <button id="saveKey" class="primary" value="save" type="button">Valider</button>
+          <button id="forgetKey" class="danger" value="forget" type="button">Oublier</button>
+          <button value="cancel">Annuler</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="historyModal">
+      <form class="modal" method="dialog">
+        <h2>Historique ASK GPT</h2>
+        <div class="history-list" id="historyList"></div>
+        <div class="actions">
+          <button id="clearHistory" class="danger" type="button">Effacer</button>
+          <button value="close">Fermer</button>
+        </div>
+      </form>
+    </dialog>
+
+    <section class="settings panel">
+      <label>
+        Dossier
+        <input id="folder" value="C:\Users\ALFRED HITCHCOCK\Documents\Codex\2026-05-22\tu-as-acces-a-mon-comfy\LTX Prompt Builder DEV">
+      </label>
+      <label>
+        Fichier prompts
+        <input id="promptFile" value="ltx_custom_queue.json">
+      </label>
+      <label>
+        Serveur ComfyUI
+        <input id="server" value="http://127.0.0.1:8188">
+      </label>
+    </section>
+
+    <div class="layout">
+      <section class="shots" id="shots"></section>
+
+      <aside class="side">
+        <section class="panel">
+          <label>
+            Negatif commun
+            <textarea id="negative">low quality, blurry, smeared motion, still frame, frozen motion, motionless subject, static bubbles, static particles, warped anatomy, distorted object shape, identity drift, composition drift, background replacement, changing subject, duplicate subject, cartoon, CGI, plastic texture, over-sharpened, flicker, exposure change, luminosity change, text, subtitles, watermark, borders, frame artifacts, cuts, transitions, scene change, camera shake</textarea>
+          </label>
+        </section>
+
+        <section class="panel">
+          <div class="run-options">
+            <label>
+              Workflow preset
+              <select id="workflowPreset">
+                <option value="ltx25_t2v" selected>LTX 2.5 T2V</option>
+                <option value="ltx25_i2v">LTX 2.5 I2V</option>
+                <option value="ltx25_flf2v">LTX 2.5 FLF2V</option>
+                <option value="t2v">LTX 2.3 T2V</option>
+                <option value="fast">LTX 2.3 I2V fast</option>
+                <option value="video_i2v_hq">LTX 2.3 I2V quality</option>
+                <option value="load">Custom workflow...</option>
+              </select>
+            </label>
+          </div>
+          <div class="workflow-overrides">
+            <label>
+              Frame preset
+              <select id="framePreset">
+                <option value="">Workflow</option>
+                <option value="49">49</option>
+                <option value="73">73</option>
+                <option value="97">97</option>
+                <option value="121">121</option>
+                <option value="153">153</option>
+                <option value="193">193</option>
+                <option value="241">241</option>
+                <option value="289">289</option>
+              </select>
+              <input id="frameCount" type="number" min="1" placeholder="Custom frame">
+            </label>
+            <label>
+              Format ratio
+              <select id="formatPreset">
+                <option value="16:9">16:9</option>
+                <option value="4:3">4:3</option>
+                <option value="3:2">3:2</option>
+                <option value="1:1">1:1</option>
+                <option value="9:16">9:16</option>
+                <option value="2:3">2:3</option>
+                <option value="21:9">21:9</option>
+              </select>
+            </label>
+            <label>
+              Size
+              <select id="sizePreset"></select>
+              <input id="videoSize" placeholder="Custom size">
+            </label>
+            <label>
+              Seed
+              <input id="noiseSeed" inputmode="numeric" placeholder="Workflow">
+            </label>
+          </div>
+          <label class="load-workflow-row" id="loadWorkflowRow">
+            Workflow charge
+            <div class="workflow-path-controls">
+              <input id="loadWorkflowPath" value="\\192.168.1.44\nas\Stable-diffusion-stuff\ComfyUI-workflows\Workflow-2026\Load-Worlflow" placeholder="Dossier ou fichier .json">
+              <button id="browseWorkflow" type="button">Parcourir</button>
+            </div>
+            <input id="workflowFile" type="file" accept=".json,application/json" hidden>
+          </label>
+          <div class="actions three">
+            <button class="primary" id="build">Generer</button>
+            <button id="copy">Copier</button>
+            <button class="danger" id="clearAll">Clear all</button>
+          </div>
+          <p class="status" id="status"></p>
+          <textarea class="command" id="command" spellcheck="false"></textarea>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+  <template id="shotTemplate">
+    <article class="shot panel">
+      <div class="shot-top">
+        <div class="num"></div>
+        <label>
+          Nom du plan
+          <input class="shot-name">
+        </label>
+        <label>
+          Seed
+          <input class="shot-seed" inputmode="numeric">
+        </label>
+        <label>
+          Style override
+          <select class="shot-style"></select>
+          <input class="shot-custom-style style-custom" placeholder="Custom style prompt">
+        </label>
+        <button class="shot-copy" type="button">Copy</button>
+        <button class="shot-clear danger" type="button">Clear</button>
+      </div>
+      <div class="shot-image-row">
+        <label>
+          Image source ComfyUI
+          <input class="shot-image" placeholder="Vide = image du workflow">
+        </label>
+        <label>
+          Upload image
+          <input class="shot-file" type="file" accept="image/*">
+        </label>
+        <button class="shot-describe" type="button">Describe</button>
+      </div>
+      <label class="path-row">
+        Chemin image local pour Python
+        <input class="shot-image-path" placeholder="Ex: C:\Images\shot01.png">
+      </label>
+      <div class="thumb-row">
+        <div class="thumb">No image</div>
+        <div class="image-status"></div>
+      </div>
+      <label>
+        Prompt
+        <textarea class="shot-prompt"></textarea>
+      </label>
+    </article>
+  </template>
+
+  <script>
+    let openAIApiKey = "";
+    const storedKeyName = "ltxPromptQueueBuilder.openaiApiKey";
+    const askHistoryKey = "ltxPromptQueueBuilder.askHistory";
+
+    const baseStyle = "Source-image-faithful LTX image-to-video prompt. Preserve the subject identity, composition, materials, colors, lighting, camera angle, and background while adding visible physical motion and clear environmental motion.";
+
+    const examples = [
+      ["01_visible_motion", "Use the source image as the first frame. Keep the same subject recognizable at all times. Add visible controlled motion: the subject shifts, turns, breathes, pulses, or sways, while nearby particles, bubbles, dust, water, fabric, or reflections move in a clear direction. One continuous shot, no cuts, no text, no scene change."],
+      ["02_environment_motion", "Use the source image as the first frame. Preserve the exact subject design, materials, colors, lighting, and background. Animate the environment clearly: bubbles rise, particles drift past the lens, water or air currents move, highlights slide across surfaces, and the subject reacts with restrained motion. One continuous shot, no cuts, no text, no scene change."],
+      ["03_clear_action", "Use the source image as the first frame. Keep the source composition and identity stable while the subject performs one simple visible action that fits the picture: a slow turn, lean, reach, pulse, fin/tentacle movement, or body sway. One continuous shot, no cuts, no text, no scene change."],
+      ["04_camera_push", "Use the source image as the first frame. The subject remains the same while the camera pushes in or drifts sideways, with visible natural movement in the body, clothing, surface, fluid, bubbles, particles, or surrounding atmosphere. One continuous shot, no cuts, no text, no scene change."],
+      ["05_settle", "Use the source image as the first frame. Preserve the subject and background, then animate a clear settling motion: the subject relaxes or sways back, bubbles continue rising, and small particles keep drifting through the scene. One continuous shot, no cuts, no text, no scene change."]
+    ];
+
+    const cameraStylePresets = [
+      { value: "none", label: "None / neutral", prompt: "Use neutral natural camera language with no added era filter or stylized processing." },
+      { value: "ina_16mm", label: "16 mm INA Documentary", prompt: "Use a 16 mm INA documentary look with archival French institutional film texture, restrained observational camera work, practical location sound, modest grain, natural color response, and sober public-broadcast documentary pacing." },
+      { value: "industrial_1970s", label: "1970s Industrial Research Film", prompt: "Use a 1970s industrial research film look with restrained tripod or dolly camera, practical lab lighting, muted color stock, documentary observation, and dry archival realism." },
+      { value: "tube_1977", label: "1977 Tube Video Broadcast", prompt: "Use a 1977 tube video broadcast look with analog studio color, soft phosphor glow, mild scanline texture, controlled zooms, and period television cadence." },
+      { value: "noir_1930s", label: "1930s Cinema Noir", prompt: "Use 1930s cinema noir language with stark black-and-white contrast, hard shadows, smoky depth, careful silhouettes, and slow suspenseful camera movement." },
+      { value: "bbc_biology_1980s", label: "1980s BBC Biology Documentary", prompt: "Use an 1980s BBC biology documentary style with patient macro observation, naturalistic narration energy, measured camera moves, soft film grain, and scientific clarity." },
+      { value: "vhs_1992", label: "VHS Camcorder 1992", prompt: "Use a 1992 VHS camcorder look with handheld domestic video texture, slight tape noise, auto-exposure breathing, modest color bleed, and casual observational framing." },
+      { value: "digital_2001", label: "Early Digital Video 2001", prompt: "Use early 2001 digital video aesthetics with crisp but compressed highlights, electronic color response, modest motion cadence, and practical handheld or tripod framing." },
+      { value: "kodachrome_travel", label: "Kodachrome Travel Film", prompt: "Use Kodachrome travel film color with rich reds and blues, bright daylight contrast, fine film grain, gentle handheld travel footage movement, and postcard clarity." },
+      { value: "soviet_archive", label: "Soviet Scientific Archive", prompt: "Use a Soviet scientific archive style with austere institutional framing, utilitarian lighting, muted film stock, locked-off observation, and archival documentary gravity." },
+      { value: "macro_nature", label: "Macro Nature Documentary", prompt: "Use macro nature documentary language with shallow depth of field, precise close focus, patient subject tracking, visible micro-movement, and tactile environmental detail." },
+      { value: "high_speed_lab", label: "High-Speed Lab Camera", prompt: "Use high-speed lab camera aesthetics with crisp slow-motion detail, neutral lighting, minimal camera movement, exact physical motion, and analytical clarity." },
+      { value: "cctv", label: "Surveillance CCTV", prompt: "Use surveillance CCTV style with fixed wide framing, compressed image texture, harsh practical lighting, timestamp-free security-camera observation, and detached realism." },
+      { value: "night_vision", label: "Night Vision Field Camera", prompt: "Use night vision field camera language with monochrome green sensitivity, infrared contrast, grain, fixed or cautious handheld framing, and nocturnal documentary tension." },
+      { value: "french_new_wave", label: "French New Wave 1960s", prompt: "Use French New Wave 1960s style with available light, nimble handheld camera, spontaneous reframing, naturalistic contrast, and elegant observational rhythm." },
+      { value: "giallo_1970s", label: "Giallo Horror 1970s", prompt: "Use 1970s giallo horror style with saturated color accents, theatrical shadows, uneasy slow zooms, stylized suspense, and tactile film grain." },
+      { value: "expressionist_silent", label: "Expressionist Silent Film", prompt: "Use expressionist silent film language with high-contrast monochrome, exaggerated shadows, theatrical composition, iris-like focus of attention, and dramatic gesture." },
+      { value: "training_tape_1984", label: "Corporate Training Tape 1984", prompt: "Use a 1984 corporate training tape look with flat instructional lighting, analog video softness, practical office-camera framing, calm demonstration pacing, and clean utilitarian composition." },
+      { value: "underwater_research", label: "Underwater Research Footage", prompt: "Use underwater research footage style with suspended particles, filtered blue-green light, drifting camera buoyancy, muffled ambience, and observational scientific framing." },
+      { value: "miniature_model", label: "Miniature Model Photography", prompt: "Use miniature model photography language with controlled scale lighting, careful focus, tactile practical effects, slow tabletop camera moves, and physical model realism." }
+    ];
+
+    const sizesByFormat = {
+      "16:9": ["1024x576", "1280x704", "1536x864", "1920x1088"],
+      "4:3": ["1024x768", "1280x960", "1536x1152"],
+      "3:2": ["1152x768", "1536x1024", "1920x1280"],
+      "1:1": ["768x768", "1024x1024", "1536x1536"],
+      "9:16": ["704x1280", "864x1536", "1088x1920"],
+      "2:3": ["768x1152", "1024x1536", "1280x1920"],
+      "21:9": ["1344x576", "1792x768", "2016x864", "2560x1088"]
+    };
+
+    function styleOptionsHtml(includeGlobal = false) {
+      const global = includeGlobal ? '<option value="global">Global</option>' : '';
+      const presets = cameraStylePresets.map(item => `<option value="${item.value}">${item.label}</option>`).join("");
+      return `${global}${presets}<option value="custom">Custom...</option>`;
+    }
+
+    function populateStyleControls() {
+      const globalSelect = document.querySelector("#globalStylePreset");
+      if (globalSelect) {
+        globalSelect.innerHTML = styleOptionsHtml(false);
+        globalSelect.value = "none";
+      }
+      template.content.querySelectorAll(".shot-style").forEach(select => {
+        select.innerHTML = styleOptionsHtml(true);
+        select.value = "global";
+      });
+      document.querySelectorAll(".shot-style").forEach(select => {
+        const current = select.value || "global";
+        select.innerHTML = styleOptionsHtml(true);
+        select.value = [...select.options].some(option => option.value === current) ? current : "global";
+      });
+      updateStyleCustomVisibility();
+    }
+
+    function getStylePreset(value) {
+      return cameraStylePresets.find(item => item.value === value) || cameraStylePresets[0];
+    }
+
+    function cleanCustomStyle(value) {
+      return (value || "").replace(/\s+/g, " ").trim();
+    }
+
+    function styleConfigFromValue(value, customText = "") {
+      if (value === "custom") {
+        const prompt = cleanCustomStyle(customText);
+        return prompt ? { value: "custom", label: "Custom", prompt } : getStylePreset("none");
+      }
+      return getStylePreset(value || "none");
+    }
+
+    function getGlobalStyleConfig() {
+      return styleConfigFromValue(
+        document.querySelector("#globalStylePreset")?.value || "none",
+        document.querySelector("#globalCustomStyle")?.value || ""
+      );
+    }
+
+    function getShotStyleConfig(shot) {
+      const override = shot.querySelector(".shot-style")?.value || "global";
+      if (override === "global") return getGlobalStyleConfig();
+      return styleConfigFromValue(override, shot.querySelector(".shot-custom-style")?.value || "");
+    }
+
+    function updateStyleCustomVisibility(root = document) {
+      const globalCustom = document.querySelector("#globalCustomStyle");
+      if (globalCustom) {
+        globalCustom.classList.toggle("active", document.querySelector("#globalStylePreset")?.value === "custom");
+      }
+      const shotRoots = root.matches?.(".shot") ? [root] : [...(root.querySelectorAll?.(".shot") || [])];
+      shotRoots.forEach(shot => {
+        const custom = shot.querySelector(".shot-custom-style");
+        const select = shot.querySelector(".shot-style");
+        if (custom && select) custom.classList.toggle("active", select.value === "custom");
+      });
+    }
+    function applyStyleToPrompt(positive, styleConfig) {
+      const preset = typeof styleConfig === "string" ? styleConfigFromValue(styleConfig) : styleConfig;
+      if (!positive || !preset || preset.value === "none") return positive;
+      return `Camera/style preset: ${preset.label}. ${preset.prompt}\n\n${positive}`;
+    }
+
+    function buildGenerationStyleNote() {
+      const preset = getGlobalStyleConfig();
+      if (!preset || preset.value === "none") return "";
+      return `Camera / style preset to integrate into every positive prompt: ${preset.label}. ${preset.prompt}\n\n`;
+    }
+    const shots = document.querySelector("#shots");
+    const template = document.querySelector("#shotTemplate");
+
+    function setStatus(id, text, warn = false) {
+      const el = document.querySelector(id);
+      el.textContent = text;
+      el.className = warn ? "status warn" : "status";
+    }
+
+    function getAskHistory() {
+      try {
+        return JSON.parse(localStorage.getItem(askHistoryKey) || "[]");
+      } catch {
+        return [];
+      }
+    }
+
+    function saveAskToHistory(text, mode, count) {
+      const value = text.trim();
+      if (!value) return;
+      const history = getAskHistory().filter(item => item.text !== value);
+      history.unshift({
+        text: value,
+        mode,
+        count,
+        date: new Date().toLocaleString()
+      });
+      localStorage.setItem(askHistoryKey, JSON.stringify(history.slice(0, 30)));
+    }
+
+    function renderAskHistory() {
+      const list = document.querySelector("#historyList");
+      const history = getAskHistory();
+      if (!history.length) {
+        list.innerHTML = `<div class="history-text">Aucune demande pour le moment.</div>`;
+        return;
+      }
+      list.innerHTML = history.map((item, index) => `
+        <div class="history-item">
+          <strong>${item.date || ""} Â· ${item.count || "?"} shot(s) Â· ${item.mode || ""}</strong>
+          <div class="history-text">${item.text.replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]))}</div>
+          <button type="button" data-history-index="${index}">Recharger</button>
+        </div>
+      `).join("");
+    }
+
+    function getShotElements() {
+      return [...document.querySelectorAll(".shot")];
+    }
+
+    function fillShot(shot, data, index) {
+      shot.querySelector(".shot-name").value = data?.name || `shot_${String(index + 1).padStart(2, "0")}`;
+      shot.querySelector(".shot-seed").value = data?.seed || (1125119286042028 + index);
+      shot.querySelector(".shot-prompt").value = data?.positive || "";
+      if (shot.querySelector(".shot-style")) shot.querySelector(".shot-style").value = data?.style || "global";
+      if (shot.querySelector(".shot-custom-style")) shot.querySelector(".shot-custom-style").value = data?.custom_style || data?.style_prompt || "";
+      updateStyleCustomVisibility(shot);
+      shot.querySelector(".shot-image").value = data?.image || "";
+      shot.querySelector(".shot-image-path").value = data?.image_path || "";
+      shot.dataset.comfyImage = data?.image || "";
+      shot.dataset.imagePath = data?.image_path || "";
+      shot.querySelector(".image-status").textContent = data?.image ? `Image: ${data.image}` : "";
+      if (!data?.image) {
+        shot.querySelector(".thumb").innerHTML = "No image";
+      }
+    }
+
+    populateStyleControls();
+
+    for (let i = 0; i < 20; i++) {
+      const node = template.content.cloneNode(true);
+      const shot = node.querySelector(".shot");
+      shot.querySelector(".num").textContent = String(i + 1).padStart(2, "0");
+      fillShot(shot, { name: `shot_${String(i + 1).padStart(2, "0")}`, seed: 1125119286042028 + i, positive: "" }, i);
+      shots.appendChild(node);
+    }
+
+    function psSingleQuoted(value) {
+      return `'${value.replaceAll("'", "''")}'`;
+    }
+
+    function refreshSizeOptions(resetToPreset = false) {
+      const format = document.querySelector("#formatPreset")?.value || "16:9";
+      const options = sizesByFormat[format] || sizesByFormat["16:9"];
+      const sizePreset = document.querySelector("#sizePreset");
+      const videoSize = document.querySelector("#videoSize");
+      if (!sizePreset || !videoSize) return;
+      const previous = videoSize.value.trim();
+      sizePreset.innerHTML = options.map(size => `<option value="${size}">${size}</option>`).join("");
+      if (!resetToPreset && previous && options.includes(previous)) {
+        sizePreset.value = previous;
+        videoSize.value = previous;
+        return;
+      }
+      sizePreset.value = options[0];
+      videoSize.value = options[0];
+    }
+    function parseOverrideNumber(selector) {
+      const value = document.querySelector(selector).value.trim();
+      if (!value) return "";
+      const number = Number(value);
+      return Number.isFinite(number) && number > 0 ? String(Math.floor(number)) : "";
+    }
+
+    function parseSizeOverride() {
+      const value = document.querySelector("#videoSize").value.trim();
+      if (!value) return "";
+      const match = value.match(/^(\d+)\s*[xX*]\s*(\d+)$/);
+      if (!match) return "";
+      return `${Number(match[1])}x${Number(match[2])}`;
+    }
+
+    function getLtxVersion() {
+      return document.querySelector("#ltxVersion")?.value || "2.5";
+    }
+
+    function isLtx25() {
+      return getLtxVersion() === "2.5";
+    }
+
+    function parseSizeParts(size) {
+      const match = (size || "").match(/^(\d+)x(\d+)$/);
+      return match ? { width: Number(match[1]), height: Number(match[2]) } : null;
+    }
+
+    function validateLtx25Settings(frameCount, size) {
+      if (!isLtx25()) return "";
+      if (frameCount && (Number(frameCount) - 1) % 8 !== 0) {
+        return "LTX 2.5 demande un frame count de type 8n+1: 97, 121, 153, 193 ou 241.";
+      }
+      const parts = parseSizeParts(size);
+      if (parts && (parts.width % 32 !== 0 || parts.height % 32 !== 0)) {
+        return "LTX 2.5 demande une taille divisible par 32, par exemple 1280x704, 1536x864 ou 704x1280.";
+      }
+      return "";
+    }
+
+    function resolveWorkflow() {
+      const preset = document.querySelector("#workflowPreset").value;
+      if (preset === "load") return document.querySelector("#loadWorkflowPath").value.trim();
+      if (preset === "ltx25_t2v") return "ltx25_t2v_api.json";
+      if (preset === "ltx25_i2v") return "ltx25_i2v_api.json";
+      if (preset === "ltx25_flf2v") return "ltx25_flf2v_api.json";
+      if (preset === "t2v") return "ltx2_t2v.json";
+      if (preset === "fast") return "ltx19b_i2v_fast_api.json";
+      if (preset === "video_i2v_hq") return "ltx19b_i2v_quality_upscale_api.json";
+      return document.querySelector("#loadWorkflowPath").value.trim();
+    }
+    function presetLtxVersion(preset) {
+      if (["ltx25_t2v", "ltx25_i2v", "ltx25_flf2v"].includes(preset)) return "2.5";
+      if (["t2v", "fast", "video_i2v_hq"].includes(preset)) return "2.3";
+      return document.querySelector("#ltxVersion")?.value || "2.5";
+    }
+
+    function syncVersionFromWorkflowPreset() {
+      const preset = document.querySelector("#workflowPreset")?.value || "ltx25_t2v";
+      const version = document.querySelector("#ltxVersion");
+      if (version && preset !== "load") version.value = presetLtxVersion(preset);
+    }
+    function syncLoadWorkflowVisibility() {
+      const preset = document.querySelector("#workflowPreset").value;
+      document.querySelector("#loadWorkflowRow").classList.toggle("active", preset === "load");
+    }
+
+    function collectRows() {
+      const negative = document.querySelector("#negative").value.trim();
+      return getShotElements().map((shot, index) => {
+        const rawPositive = shot.querySelector(".shot-prompt").value.trim();
+        if (!rawPositive) return null;
+        const positive = applyStyleToPrompt(rawPositive, getShotStyleConfig(shot));
+        const statusText = shot.querySelector(".image-status").textContent || "";
+        const statusImage = statusText.match(/(?:Image uploadee:|Image:)\s*(.+)$/)?.[1]?.trim() || "";
+        const image = shot.querySelector(".shot-image").value.trim() || shot.dataset.comfyImage || statusImage;
+        return {
+          name: shot.querySelector(".shot-name").value.trim() || `shot_${String(index + 1).padStart(2, "0")}`,
+          seed: Number(shot.querySelector(".shot-seed").value.trim()) || Date.now() + index,
+          upscale_seed: index,
+          image,
+          image_path: shot.querySelector(".shot-image-path").value.trim() || shot.dataset.imagePath || "",
+          image_filename: shot.dataset.imageFilename || "",
+          positive,
+          negative
+        };
+      }).filter(Boolean);
+    }
+
+    function hasAnyLinkedImage() {
+      return getShotElements().some(shot => {
+        return !!(
+          shot.querySelector(".shot-image").value.trim() ||
+          shot.querySelector(".shot-image-path").value.trim() ||
+          shot.dataset.comfyImage ||
+          shot.dataset.imagePath ||
+          shot.querySelector(".shot-file").files?.[0]
+        );
+      });
+    }
+
+    function buildCommand() {
+      const folder = document.querySelector("#folder").value.trim();
+      const workflow = resolveWorkflow();
+      const promptFile = document.querySelector("#promptFile").value.trim() || "ltx_custom_queue.json";
+      const server = document.querySelector("#server").value.trim() || "http://127.0.0.1:8188";
+      const promptRows = collectRows();
+      const frameCount = parseOverrideNumber("#frameCount");
+      const size = parseSizeOverride();
+      const noiseSeed = parseOverrideNumber("#noiseSeed");
+
+      if (!folder || !workflow || promptRows.length === 0) {
+        setStatus("#status", "Remplis au moins un prompt.", true);
+        return "";
+      }
+
+      const ltx25Error = validateLtx25Settings(frameCount, size);
+      if (ltx25Error) {
+        setStatus("#status", ltx25Error, true);
+        return "";
+      }
+
+      const imageCount = promptRows.filter(row => row.image || row.image_path).length;
+      const workflowPresetValue = document.querySelector("#workflowPreset").value;
+      const descriptionCount = promptRows.filter(row => row.positive.includes("Image description:")).length;
+      const workflowLabel = workflowPresetValue === "load" ? "Workflow charge" : "Preset";
+      const overrides = [
+        frameCount ? `frames ${frameCount}` : "",
+        size ? `size ${size}` : "",
+        noiseSeed ? `seed ${noiseSeed}+` : ""
+      ].filter(Boolean).join(", ") || "preset";
+      const versionHint = isLtx25() ? "LTX 2.5: prompts en paragraphe continu. " : "";
+      setStatus("#status", `${versionHint}${promptRows.length} prompt(s) prets. Images liees: ${imageCount}/${promptRows.length}. Descriptions: ${descriptionCount}/${promptRows.length}. ${workflowLabel}: ${workflow}. Reglages: ${overrides}`, false);
+      const json = JSON.stringify(promptRows, null, 2);
+      const overrideArgs = [
+        frameCount ? `--frame-count ${frameCount}` : "",
+        size ? `--size ${psSingleQuoted(size)}` : "",
+        noiseSeed ? `--noise-seed ${noiseSeed}` : ""
+      ].filter(Boolean).join(" ");
+      return [
+        `cd ${psSingleQuoted(folder)}`,
+        `$prompts = @'`,
+        json,
+        `'@`,
+        `Set-Content -LiteralPath ${psSingleQuoted(promptFile)} -Value $prompts -Encoding UTF8`,
+        `python .\\queue_ltx_multishot.py --server ${psSingleQuoted(server)} --workflow ${psSingleQuoted(workflow)} --prompts ${psSingleQuoted(promptFile)}${overrideArgs ? ` ${overrideArgs}` : ""}`
+      ].join("\n");
+    }
+
+    function localCodexRequest() {
+      const ask = document.querySelector("#askText").value.trim();
+      const count = Math.max(1, Math.min(20, Number(document.querySelector("#shotCount").value) || 5));
+      const styleNote = buildGenerationStyleNote();
+      if (isLtx25()) {
+        if (!hasAnyLinkedImage()) {
+          return `Remplis mon LTX Prompt Queue Builder en mode LTX 2.5 avec ${count} generations text-to-video. Scene: ${ask}\n\n${styleNote}Retourne uniquement un JSON array avec les champs name, seed, positive. Chaque positive doit etre un seul paragraphe fluide au present, sans timestamps, sans bullet points, sans libelles Shot 1, sans crochets de timing. Integre sujet, lieu, action, camera, lumiere, style et audio dans la prose. Pas d image chargee: ne parle jamais d image source ou d image fournie.`;
+        }
+        return `Remplis mon LTX Prompt Queue Builder en mode LTX 2.5 avec ${count} generations image-to-video. Scene: ${ask}\n\n${styleNote}Retourne uniquement un JSON array avec les champs name, seed, positive. Regle LTX 2.5 I2V: l image chargee est deja la source visuelle, donc ne redecris pas le sujet statique, ne remplace pas le decor, ne redesigne rien. Chaque positive doit etre un seul paragraphe fluide au present, sans timestamps, sans bullet points, sans libelles Shot 1, sans crochets de timing. Commence par "The scene comes to life from stillness" puis decris uniquement le mouvement, la camera et l audio. Verrouille ce qui doit rester fixe. Ajoute une action visible et un mouvement secondaire coherent. Termine par une indication audio claire, ou "and no music" si pas de musique.`;
+      }
+      if (!hasAnyLinkedImage()) {
+        return `Remplis mon LTX Prompt Queue Builder avec ${count} shots. Scene: ${ask}\n\n${styleNote}Retourne uniquement un JSON array avec les champs name, seed, positive. Aucun shot n'a d'image chargee: ne parle jamais d'image fournie, image source, reference image, provided image, source image, ni de preservation d'image. Le champ positive doit reprendre la description generale ci-dessus comme base principale; ajoute seulement un cadrage ou mouvement minimal si necessaire. Les prompts doivent etre mono-shot, une seule scene continue, pas de cuts, pas de transitions.`;
+      }
+      return `Remplis mon LTX Prompt Queue Builder avec ${count} shots. Scene: ${ask}\n\n${styleNote}Retourne uniquement un JSON array avec les champs name, seed, positive. Les prompts doivent etre mono-shot et adaptes a LTX image-to-video. Regle importante: l'image fournie est la source de verite. Chaque prompt doit commencer par "Use the source image as the first frame. Keep the same subject recognizable at all times; preserve key shapes, materials, colors, lighting, camera angle, and background." Decris ensuite une action visible mais controlee, pas seulement subtile. Ajoute toujours un mouvement secondaire si l'image le permet: bulles qui remontent, particules qui derivent, eau/air qui circule, reflets qui glissent, appendices/peau/vetements qui ondulent. Ne decris pas un nouveau sujet, n'invente pas d'anatomie, ne transforme pas la matiere, et evite morphing/melting/dissolving.`;
+    }
+
+    function extractOutputText(data) {
+      if (data.output_text) return data.output_text;
+      const texts = [];
+      for (const item of data.output || []) {
+        for (const content of item.content || []) {
+          if (content.type === "output_text" && content.text) texts.push(content.text);
+        }
+      }
+      return texts.join("\n");
+    }
+
+    async function generateWithOpenAI() {
+      const model = document.querySelector("#apiModel").value;
+      const ask = document.querySelector("#askText").value.trim();
+      const count = Math.max(1, Math.min(20, Number(document.querySelector("#shotCount").value) || 5));
+      const hasImages = hasAnyLinkedImage();
+      const styleNote = buildGenerationStyleNote();
+      if (!openAIApiKey) throw new Error("Ajoute ta cle API OpenAI avec le bouton Ajouter / changer.");
+      if (!ask) throw new Error("Decris d'abord la scene.");
+
+      const body = {
+        model,
+        input: [
+          {
+            role: "system",
+            content: isLtx25()
+              ? (hasImages
+                ? "You generate JSON only for LTX 2.5 image-to-video prompt queues. Output a JSON array only. Each positive prompt is one flowing present-tense paragraph. Never use timestamps, bracketed beats, shot labels, or bullets. For I2V, the input image is the visual source of truth: do not re-describe static subject identity, do not redesign the subject, do not replace the background, and do not transform materials. Describe only motion, camera, and audio. Open with transition from stillness, lock static elements, and include audible ambience or no music."
+                : "You generate JSON only for LTX 2.5 text-to-video prompt queues. Output a JSON array only. Each positive prompt is one flowing present-tense paragraph. Never use timestamps, bracketed beats, shot labels, or bullets. Fold subject, setting, action, camera, lighting, style, and audio into prose.")
+              : (hasImages
+                ? "You generate JSON only for LTX image-to-video prompt queues. Each shot must be one continuous shot, no cuts, no transitions, no scene change. Use the source image as the first frame and identity anchor. Do not redesign the subject, replace the background, invent new anatomy, or transform materials. Describe visible controlled subject motion plus visible secondary environmental motion when available: rising bubbles, drifting particles, moving water, air, cloth, hair, skin, tentacles, limbs, or sliding reflections. Output a JSON array only."
+                : "You generate JSON only for LTX text-to-video prompt queues. Each shot must be one continuous shot, no cuts, no transitions, no scene change. The user has not loaded any image. Never mention provided image, source image, reference image, input image, or preserving an image. Base every prompt only on the user's scene description. Output a JSON array only.")
+          },
+          {
+            role: "user",
+            content: isLtx25()
+              ? (hasImages
+                ? `Create ${count} coherent LTX 2.5 image-to-video generations for this scene:\n${ask}\n\n${styleNote}Each item must have: name, seed, positive. Use short filesystem-safe names. Seeds must be integers. Each positive is one paragraph in present tense. Start with "The scene comes to life from stillness". Do not describe what the image already shows except short lock clauses for what must remain unchanged. Describe visible motion, camera motion, atmosphere motion, and audio only. No timestamps, no bullet points, no scene labels, no cuts unless the user explicitly asks for native multi-shot.`
+                : `Create ${count} coherent LTX 2.5 text-to-video generations for this scene:\n${ask}\n\n${styleNote}Each item must have: name, seed, positive. Use short filesystem-safe names. Seeds must be integers. Each positive is one flowing paragraph in present tense with subject, place, action, camera, light, style, and audio. No timestamps, no bullet points, no shot labels, no bracketed beats.`)
+              : (hasImages
+                ? `Create ${count} coherent LTX image-to-video shots for this scene:\n${ask}\n\n${styleNote}Each item must have: name, seed, positive. Use short filesystem-safe names. Seeds must be integers. Each positive prompt must start with: "Use the source image as the first frame. Keep the same subject recognizable at all times; preserve key shapes, materials, colors, lighting, camera angle, and background." Then describe visible controlled motion that fits the source image. Do not make it almost static: include one subject motion and one secondary environmental motion when available, for example rising bubbles, drifting particles, moving water, air, cloth, hair, skin, tentacles, limbs, or sliding reflections. Do not invent anatomy, do not introduce another subject, do not transform materials, and avoid morphing, melting, dissolving, or losing the source subject.`
+                : `Create ${count} coherent LTX text-to-video shots for this scene:\n${ask}\n\n${styleNote}Each item must have: name, seed, positive. Use short filesystem-safe names. Seeds must be integers. No images are loaded. Do not mention a provided image, source image, reference image, input image, or preserving an image. The positive field must mostly copy/use the user's general scene description above as the source text; add only minimal framing or motion if needed. Keep each prompt as a single continuous shot, no cuts, no transitions, no scene change.`)
+          }
+        ],
+        max_output_tokens: 9000
+      };
+
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${openAIApiKey}`
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`OpenAI API error ${response.status}: ${errorText.slice(0, 300)}`);
+      }
+
+      const data = await response.json();
+      const text = extractOutputText(data).trim();
+      const cleaned = text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+      return JSON.parse(cleaned);
+    }
+
+    function readFileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function describeShotImage(shot) {
+      if (!openAIApiKey) throw new Error("Ajoute ta cle API OpenAI avant de decrire une image.");
+      const file = shot.querySelector(".shot-file").files?.[0];
+      if (!file) throw new Error("Choisis une image dans ce shot avant Describe.");
+      const model = document.querySelector("#apiModel").value;
+      const imageUrl = await readFileAsDataUrl(file);
+      const response = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${openAIApiKey}`
+        },
+        body: JSON.stringify({
+          model,
+          input: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: "Describe this image for an LTX image-to-video prompt. Be short and literal. Focus only on visible subject identity, silhouette, materials, colors, lighting, camera angle, composition, and background. Do not invent actions. Output one compact paragraph, no bullets."
+                },
+                {
+                  type: "input_image",
+                  image_url: imageUrl,
+                  detail: "low"
+                }
+              ]
+            }
+          ],
+          max_output_tokens: 500
+        })
+      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Describe impossible (${response.status}) ${errorText.slice(0, 220)}`);
+      }
+      const data = await response.json();
+      return extractOutputText(data).trim();
+    }
+
+    function injectDescription(shot, description) {
+      const prompt = shot.querySelector(".shot-prompt");
+      const current = prompt.value.trim();
+      const lockedPrefix = `Use the source image as the first frame. Keep the same subject recognizable at all times; preserve key shapes, materials, colors, lighting, camera angle, and background.\n\nImage description: ${description}`;
+      if (!current) {
+        prompt.value = `${lockedPrefix}\n\nAdd visible controlled motion to the existing subject while keeping the image identity stable. Also animate secondary elements if present: bubbles rise, particles drift, water or air moves, and reflections slide across surfaces. One continuous shot, no cuts, no scene change.`;
+        return;
+      }
+      const withoutOldDescription = current.replace(/Image description:[\s\S]*?(?=\n\n|$)/i, "").trim();
+      prompt.value = `${lockedPrefix}\n\n${withoutOldDescription}`;
+    }
+
+    function getImageDescription(promptText) {
+      const match = promptText.match(/Image description:\s*([\s\S]*?)(?=\n\n|$)/i);
+      return match?.[1]?.trim() || "";
+    }
+
+    function mergeGeneratedPromptWithExistingDescription(existingPrompt, generatedPrompt) {
+      const description = getImageDescription(existingPrompt);
+      if (!description) return generatedPrompt || "";
+      const cleanedGenerated = (generatedPrompt || "")
+        .replace(/Image description:[\s\S]*?(?=\n\n|$)/i, "")
+        .trim();
+      const prefix = `Use the source image as the first frame. Keep the same subject recognizable at all times; preserve key shapes, materials, colors, lighting, camera angle, and background.\n\nImage description: ${description}`;
+      return cleanedGenerated ? `${prefix}\n\n${cleanedGenerated}` : prefix;
+    }
+
+    function applyGeneratedShots(rows) {
+      const shotEls = getShotElements();
+      shotEls.forEach((shot, index) => {
+        const currentImage = shot.querySelector(".shot-image").value.trim();
+        const currentImagePath = shot.querySelector(".shot-image-path").value.trim();
+        const currentDatasetImage = shot.dataset.comfyImage || "";
+        const currentDatasetImagePath = shot.dataset.imagePath || "";
+        const currentStatus = shot.querySelector(".image-status").textContent;
+        const currentThumb = shot.querySelector(".thumb").innerHTML;
+        const currentPrompt = shot.querySelector(".shot-prompt").value.trim();
+        const generated = rows[index] || {};
+        const mergedPrompt = mergeGeneratedPromptWithExistingDescription(currentPrompt, generated.positive);
+        fillShot(shot, {
+          ...generated,
+          image: generated.image || currentImage || currentDatasetImage,
+          image_path: generated.image_path || currentImagePath || currentDatasetImagePath,
+          positive: mergedPrompt
+        }, index);
+        if (currentDatasetImage) shot.dataset.comfyImage = currentDatasetImage;
+        if (currentDatasetImagePath || currentImagePath) {
+          shot.dataset.imagePath = currentDatasetImagePath || currentImagePath;
+          shot.querySelector(".shot-image-path").value = currentDatasetImagePath || currentImagePath;
+        }
+        if (currentStatus) shot.querySelector(".image-status").textContent = currentStatus;
+        if (currentThumb && currentThumb !== "No image") shot.querySelector(".thumb").innerHTML = currentThumb;
+      });
+      document.querySelector("#apiRow").classList.toggle("active", document.querySelector("#aiMode").value === "api");
+      document.querySelector("#command").value = buildCommand();
+    }
+
+
+    function cleanImportedText(value) {
+      return (value || "").replace(/\r/g, "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+    }
+
+    function safeImportedName(value, index) {
+      const cleaned = cleanImportedText(value)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .slice(0, 48);
+      return cleaned || `shot_${String(index + 1).padStart(2, "0")}`;
+    }
+
+    function parsePromptBlock(text, index) {
+      const raw = cleanImportedText(text);
+      if (raw.length < 30) return null;
+      const seedMatch = raw.match(/\bseed\s*[:=]\s*(\d+)/i);
+      const nameMatch = raw.match(/\b(?:name|title|shot|plan)\s*[:=]\s*([^\n]+)/i);
+      const promptMatch = raw.match(/\b(?:positive|prompt)\s*[:=]\s*([\s\S]+)/i) || raw.match(/```(?:text|prompt)?\s*([\s\S]*?)```/i);
+      let positive = cleanImportedText(promptMatch ? promptMatch[1] : raw)
+        .replace(/\bseed\s*[:=]\s*\d+/i, "")
+        .replace(/\b(?:name|title|shot|plan)\s*[:=]\s*[^\n]+/i, "")
+        .trim();
+      if (positive.length < 30) return null;
+      return {
+        name: safeImportedName(nameMatch ? nameMatch[1] : positive.slice(0, 60), index),
+        seed: seedMatch ? Number(seedMatch[1]) : "",
+        positive
+      };
+    }
+
+    function extractPromptsFromHtml(rawHtml) {
+      const doc = new DOMParser().parseFromString(rawHtml, "text/html");
+      for (const script of doc.querySelectorAll("script[type='application/json'], script[data-prompts]")) {
+        try {
+          const parsed = JSON.parse(script.textContent.trim());
+          if (Array.isArray(parsed)) {
+            return parsed.map((item, index) => ({
+              name: item.name || item.title || `shot_${String(index + 1).padStart(2, "0")}`,
+              seed: item.seed || "",
+              positive: item.positive || item.prompt || item.text || "",
+              style: item.style || "global"
+            })).filter(item => item.positive).slice(0, 20);
+          }
+        } catch {}
+      }
+
+      const rows = [];
+      const seen = new Set();
+      const selectors = ["[data-prompt]", "[data-positive]", ".prompt", ".positive", ".shot", ".card", "article", "section", "li", "pre", "textarea"];
+      for (const selector of selectors) {
+        for (const el of doc.querySelectorAll(selector)) {
+          const text = el.getAttribute("data-prompt") || el.getAttribute("data-positive") || el.value || el.textContent || "";
+          const parsed = parsePromptBlock(text, rows.length);
+          if (!parsed) continue;
+          const key = parsed.positive.slice(0, 300);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          rows.push(parsed);
+          if (rows.length >= 20) return rows;
+        }
+      }
+      return rows;
+    }
+
+    async function loadPromptsHtmlFile(file) {
+      const raw = await file.text();
+      const rows = extractPromptsFromHtml(raw);
+      if (!rows.length) throw new Error("Aucun prompt detecte dans ce HTML.");
+      document.querySelector("#shotCount").value = Math.min(rows.length, 20);
+      applyGeneratedShots(rows);
+      setStatus("#status", `${Math.min(rows.length, 20)} prompt(s) charges depuis le HTML.`);
+    }
+    async function stageShotImage(shot, file) {
+      shot.dataset.imageFilename = file.name;
+      shot.dataset.comfyImage = "";
+      shot.querySelector(".shot-image").value = "";
+
+      if (location.protocol.startsWith("http")) {
+        const form = new FormData();
+        form.append("image", file);
+        form.append("filename_hint", file.name);
+        shot.querySelector(".image-status").textContent = "Copie locale de l'image...";
+        const response = await fetch("/api/upload", { method: "POST", body: form });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(`Copie locale impossible (${response.status}) ${text.slice(0, 160)}`);
+        }
+        const data = await response.json();
+        shot.dataset.imagePath = data.path;
+        shot.querySelector(".shot-image-path").value = data.path;
+        shot.querySelector(".image-status").textContent = `Image prete: ${file.name}`;
+      } else {
+        shot.querySelector(".image-status").textContent = `Image choisie: ${file.name}. Lance l'app via ltx_builder_server.py pour remplir le chemin automatiquement.`;
+      }
+      document.querySelector("#command").value = buildCommand();
+    }
+
+    async function stageWorkflowFile(file) {
+      if (!file) return;
+      if (!location.protocol.startsWith("http")) {
+        setStatus("#status", "Lance l'app avec le bouton .bat pour utiliser Parcourir.", true);
+        return;
+      }
+      const form = new FormData();
+      form.append("workflow", file);
+      form.append("filename_hint", file.name);
+      setStatus("#status", "Copie locale du workflow...");
+      const response = await fetch("/api/workflow-upload", { method: "POST", body: form });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Workflow impossible a charger (${response.status}) ${text.slice(0, 180)}`);
+      }
+      const data = await response.json();
+      document.querySelector("#loadWorkflowPath").value = data.path;
+      document.querySelector("#workflowPreset").value = "load";
+      syncLoadWorkflowVisibility();
+      document.querySelector("#command").value = buildCommand();
+      setStatus("#status", `Workflow charge: ${file.name}`);
+    }
+
+
+
+    async function loadedWorkflowLooksLikeUi(path) {
+      if (!path || !location.protocol.startsWith("http")) return false;
+      const name = path.split(/[\\/]/).pop();
+      if (!name) return false;
+      try {
+        const response = await fetch(`/api/workflow-read?name=${encodeURIComponent(name)}`);
+        if (!response.ok) return false;
+        const data = await response.json();
+        return !!(data && Array.isArray(data.nodes) && Array.isArray(data.links));
+      } catch {
+        return false;
+      }
+    }
+    function syncLtxVersionUi() {
+      const frame = document.querySelector("#frameCount");
+      const size = document.querySelector("#videoSize");
+      const preset = document.querySelector("#workflowPreset");
+      if (isLtx25()) {
+        frame.placeholder = "Custom frame";
+        size.placeholder = "Custom size";
+        if (["t2v", "fast", "video_i2v_hq"].includes(preset.value)) {
+          preset.value = hasAnyLinkedImage() ? "ltx25_i2v" : "ltx25_t2v";
+        }
+      } else {
+        frame.placeholder = "Custom frame";
+        size.placeholder = "Custom size";
+        if (["ltx25_t2v", "ltx25_i2v", "ltx25_flf2v"].includes(preset.value)) {
+          preset.value = hasAnyLinkedImage() ? "fast" : "t2v";
+        }
+      }
+      refreshSizeOptions(false);
+      syncLoadWorkflowVisibility();
+      document.querySelector("#command").value = buildCommand();
+    }
+    document.querySelector("#aiMode").addEventListener("change", () => {
+      document.querySelector("#apiRow").classList.toggle("active", document.querySelector("#aiMode").value === "api");
+    });
+
+    document.querySelector("#clearAsk").addEventListener("click", () => {
+      document.querySelector("#askText").value = "";
+      setStatus("#askStatus", "ASK GPT efface.");
+    });
+
+    document.querySelector("#ltxVersion").addEventListener("change", syncLtxVersionUi);
+
+    document.querySelector("#workflowPreset").addEventListener("change", () => {
+      syncVersionFromWorkflowPreset();
+      syncLoadWorkflowVisibility();
+      document.querySelector("#command").value = buildCommand();
+    });
+
+    document.querySelector("#loadWorkflowPath").addEventListener("input", () => {
+      document.querySelector("#command").value = buildCommand();
+    });
+
+    document.querySelector("#browseWorkflow").addEventListener("click", () => {
+      document.querySelector("#workflowFile").click();
+    });
+
+    document.querySelector("#workflowFile").addEventListener("change", async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        await stageWorkflowFile(file);
+      } catch (error) {
+        setStatus("#status", error.message, true);
+      } finally {
+        event.target.value = "";
+      }
+    });
+
+    ["#frameCount", "#videoSize", "#noiseSeed"].forEach(selector => {
+      document.querySelector(selector).addEventListener("input", () => {
+        if (selector === "#frameCount") document.querySelector("#framePreset").value = "";
+        document.querySelector("#command").value = buildCommand();
+      });
+    });
+
+    document.querySelector("#framePreset").addEventListener("change", () => {
+      document.querySelector("#frameCount").value = document.querySelector("#framePreset").value;
+      document.querySelector("#command").value = buildCommand();
+    });
+
+    document.querySelector("#formatPreset").addEventListener("change", () => {
+      refreshSizeOptions(true);
+      document.querySelector("#command").value = buildCommand();
+    });
+
+    document.querySelector("#sizePreset").addEventListener("change", () => {
+      document.querySelector("#videoSize").value = document.querySelector("#sizePreset").value;
+      document.querySelector("#command").value = buildCommand();
+    });
+
+    document.querySelector("#globalStylePreset").addEventListener("change", () => {
+      updateStyleCustomVisibility();
+      document.querySelector("#command").value = buildCommand();
+    });
+
+    document.querySelector("#globalCustomStyle").addEventListener("input", () => {
+      document.querySelector("#command").value = buildCommand();
+    });
+
+    document.querySelector("#loadPromptHtml").addEventListener("click", () => {
+      document.querySelector("#promptHtmlFile").click();
+    });
+
+    document.querySelector("#promptHtmlFile").addEventListener("change", async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        await loadPromptsHtmlFile(file);
+      } catch (error) {
+        setStatus("#status", error.message, true);
+      } finally {
+        event.target.value = "";
+      }
+    });
+
+    document.querySelector("#openKeyModal").addEventListener("click", () => {
+      document.querySelector("#apiKeyInput").value = "";
+      document.querySelector("#rememberKey").checked = !!localStorage.getItem(storedKeyName);
+      document.querySelector("#keyModal").showModal();
+      setTimeout(() => document.querySelector("#apiKeyInput").focus(), 50);
+    });
+
+    document.querySelector("#saveKey").addEventListener("click", () => {
+      const value = document.querySelector("#apiKeyInput").value.trim();
+      if (!value) {
+        setStatus("#askStatus", "Aucune cle saisie.", true);
+        return;
+      }
+      openAIApiKey = value;
+      if (document.querySelector("#rememberKey").checked) {
+        localStorage.setItem(storedKeyName, value);
+      } else {
+        localStorage.removeItem(storedKeyName);
+      }
+      document.querySelector("#apiKeyInput").value = "";
+      document.querySelector("#keyStatus").textContent = document.querySelector("#rememberKey").checked ? "Cle stockee sur cet ordinateur" : "Cle chargee en memoire";
+      document.querySelector("#keyModal").close();
+      setStatus("#askStatus", document.querySelector("#rememberKey").checked ? "Cle API prete et stockee localement." : "Cle API prete. Elle n'est pas stockee dans le fichier.");
+    });
+
+    document.querySelector("#forgetKey").addEventListener("click", () => {
+      openAIApiKey = "";
+      localStorage.removeItem(storedKeyName);
+      document.querySelector("#apiKeyInput").value = "";
+      document.querySelector("#rememberKey").checked = false;
+      document.querySelector("#keyStatus").textContent = "Aucune cle en memoire";
+      document.querySelector("#keyModal").close();
+      setStatus("#askStatus", "Cle API oubliee.");
+    });
+
+    document.querySelector("#askGenerate").addEventListener("click", async () => {
+      const mode = document.querySelector("#aiMode").value;
+      saveAskToHistory(
+        document.querySelector("#askText").value,
+        mode,
+        Math.max(1, Math.min(20, Number(document.querySelector("#shotCount").value) || 5))
+      );
+      try {
+        if (mode === "local") {
+          const request = localCodexRequest();
+          await navigator.clipboard.writeText(request);
+          setStatus("#askStatus", "Demande LOCAL copiee. Colle-la dans Codex, puis colle le JSON obtenu ici si tu veux que je l'integre.");
+          document.querySelector("#command").value = request;
+          return;
+        }
+        setStatus("#askStatus", "Generation via OpenAI API...");
+        const rows = await generateWithOpenAI();
+        applyGeneratedShots(rows);
+        setStatus("#askStatus", `${rows.length} shots generes.`);
+      } catch (error) {
+        setStatus("#askStatus", error.message, true);
+      }
+    });
+
+    document.querySelector("#openHistory").addEventListener("click", () => {
+      renderAskHistory();
+      document.querySelector("#historyModal").showModal();
+    });
+
+    document.querySelector("#clearHistory").addEventListener("click", () => {
+      localStorage.removeItem(askHistoryKey);
+      renderAskHistory();
+      setStatus("#askStatus", "Historique efface.");
+    });
+
+    document.querySelector("#historyList").addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-history-index]");
+      if (!button) return;
+      const item = getAskHistory()[Number(button.dataset.historyIndex)];
+      if (!item) return;
+      document.querySelector("#askText").value = item.text;
+      if (item.count) document.querySelector("#shotCount").value = item.count;
+      document.querySelector("#historyModal").close();
+      setStatus("#askStatus", "Demande rechargee.");
+    });
+
+    document.querySelector("#build").addEventListener("click", () => {
+      document.querySelector("#command").value = buildCommand();
+    });
+
+    document.querySelector("#copy").addEventListener("click", async () => {
+      const command = document.querySelector("#command").value || buildCommand();
+      const rows = collectRows();
+      const imageCount = rows.filter(row => row.image || row.image_path).length;
+      document.querySelector("#command").value = command;
+      await navigator.clipboard.writeText(command);
+      setStatus("#status", "Commande copiee.");
+      alert(`Commande copiee. Images liees: ${imageCount}/${rows.length}. Colle-la dans PowerShell, puis appuie sur Entree pour lancer la queue ComfyUI.`);
+    });
+
+    document.querySelector("#clearAll").addEventListener("click", () => {
+      getShotElements().forEach((shot, index) => fillShot(shot, { name: `shot_${String(index + 1).padStart(2, "0")}`, seed: 1125119286042028 + index, positive: "" }, index));
+      document.querySelector("#command").value = "";
+      setStatus("#status", "Tous les prompts ont ete effaces.");
+    });
+
+    shots.addEventListener("click", async (event) => {
+      const shot = event.target.closest(".shot");
+      if (!shot) return;
+      const index = getShotElements().indexOf(shot);
+      if (event.target.classList.contains("shot-clear")) {
+        fillShot(shot, { name: `shot_${String(index + 1).padStart(2, "0")}`, seed: 1125119286042028 + index, positive: "" }, index);
+        setStatus("#status", `Shot ${index + 1} efface.`);
+      }
+      if (event.target.classList.contains("shot-copy")) {
+        const payload = {
+          name: shot.querySelector(".shot-name").value.trim(),
+          seed: shot.querySelector(".shot-seed").value.trim(),
+          image: shot.querySelector(".shot-image").value.trim(),
+          positive: shot.querySelector(".shot-prompt").value.trim(),
+          style: shot.querySelector(".shot-style")?.value || "global",
+          custom_style: shot.querySelector(".shot-custom-style")?.value.trim() || ""
+        };
+        await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+        setStatus("#status", `Shot ${index + 1} copie.`);
+      }
+      if (event.target.classList.contains("shot-describe")) {
+        try {
+          shot.querySelector(".image-status").textContent = "Description GPT en cours...";
+          const description = await describeShotImage(shot);
+          injectDescription(shot, description);
+          shot.querySelector(".image-status").textContent = "Description ajoutee au prompt.";
+          document.querySelector("#command").value = buildCommand();
+          setStatus("#status", `Shot ${index + 1} decrit.`);
+        } catch (error) {
+          shot.querySelector(".image-status").textContent = error.message;
+          setStatus("#status", error.message, true);
+        }
+      }
+    });
+
+    shots.addEventListener("input", (event) => {
+      if (event.target.classList.contains("shot-custom-style")) {
+        document.querySelector("#command").value = buildCommand();
+      }
+    });
+
+    shots.addEventListener("change", async (event) => {
+      if (event.target.classList.contains("shot-style")) {
+        updateStyleCustomVisibility(event.target.closest(".shot"));
+        document.querySelector("#command").value = buildCommand();
+        return;
+      }
+      if (!event.target.classList.contains("shot-file")) return;
+      const shot = event.target.closest(".shot");
+      const file = event.target.files?.[0];
+      if (!shot || !file) return;
+      shot.querySelector(".image-status").textContent = `Fichier choisi: ${file.name}`;
+      const oldUrl = shot.dataset.thumbUrl;
+      if (oldUrl) URL.revokeObjectURL(oldUrl);
+      const url = URL.createObjectURL(file);
+      shot.dataset.thumbUrl = url;
+      shot.querySelector(".thumb").innerHTML = `<img alt="Selected image preview" src="${url}">`;
+      try {
+        await stageShotImage(shot, file);
+        setStatus("#status", "Image liee au shot. Elle sera uploadee par Python au lancement.");
+      } catch (error) {
+        shot.querySelector(".image-status").textContent = error.message;
+        setStatus("#status", error.message, true);
+      }
+    });
+
+    syncLtxVersionUi();
+
+    const storedKey = localStorage.getItem(storedKeyName);
+    if (storedKey) {
+      openAIApiKey = storedKey;
+      document.querySelector("#keyStatus").textContent = "Cle stockee sur cet ordinateur";
+    }
+  </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+

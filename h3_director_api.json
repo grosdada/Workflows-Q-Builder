@@ -1,0 +1,350 @@
+{
+  "119": {
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "120": {
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "127": {
+    "inputs": {
+      "unet_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "128": {
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "146": {
+    "inputs": {
+      "max_resolution": 0,
+      "jpeg_quality": 80,
+      "suppress_default_preview": true,
+      "preview_frames": 124,
+      "preview_fps": 24,
+      "model": [
+        "127",
+        0
+      ],
+      "vae": [
+        "147",
+        0
+      ]
+    },
+    "class_type": "ModelPreviewOverrideKJ",
+    "_meta": {
+      "title": "Preview Mode for Ref Model"
+    }
+  },
+  "147": {
+    "inputs": {
+      "vae_name": "taeltx2_3.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "153": {
+    "inputs": {
+      "purge_cache": true,
+      "purge_models": true,
+      "anything": [
+        "161",
+        0
+      ]
+    },
+    "class_type": "LayerUtility: PurgeVRAM",
+    "_meta": {
+      "title": "LayerUtility: Purge VRAM"
+    }
+  },
+  "155": {
+    "inputs": {
+      "images": [
+        "161",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "Preview Image"
+    }
+  },
+  "161": {
+    "inputs": {
+      "batch_index": -6,
+      "length": 1,
+      "image": [
+        "181",
+        4
+      ]
+    },
+    "class_type": "ImageFromBatch",
+    "_meta": {
+      "title": "Last Frame"
+    }
+  },
+  "162": {
+    "inputs": {
+      "unet_name": "minimax_h3_fl2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "171": {
+    "inputs": {
+      "text": [
+        "181",
+        2
+      ]
+    },
+    "class_type": "iToolsPreviewText",
+    "_meta": {
+      "title": "iTools Text Preview"
+    }
+  },
+  "173": {
+    "inputs": {
+      "max_resolution": 0,
+      "jpeg_quality": 80,
+      "suppress_default_preview": true,
+      "preview_frames": 124,
+      "preview_fps": 24,
+      "model": [
+        "162",
+        0
+      ],
+      "vae": [
+        "147",
+        0
+      ]
+    },
+    "class_type": "ModelPreviewOverrideKJ",
+    "_meta": {
+      "title": "Preview Mode for FLF Model"
+    }
+  },
+  "178": {
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "Muse/Video/jourdain_C2_livre-blanc_b",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "181",
+        4
+      ],
+      "audio": [
+        "181",
+        5
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Full"
+    }
+  },
+  "181": {
+    "inputs": {
+      "mode": "Reference (Omni) — up to 9 images, 3 videos, 3 audio",
+      "aspect_ratio": "4:3 (Standard)",
+      "megapixels": 0.9,
+      "multiple": 32,
+      "resize_method": "crop",
+      "duration_seconds": 15,
+      "chunk_duration_seconds": 15,
+      "ref_image_size": "match",
+      "hybrid_continuation": false,
+      "seed": 100,
+      "seed_hunt": false,
+      "steps": 20,
+      "sampler_name": "res_multistep",
+      "scheduler": "simple",
+      "shift_video": 12,
+      "shift_audio": 3,
+      "timeline_data": "{\"characters\": [], \"segments\": [{\"prompt\": \"Locked shot, outside the same aircraft works, on flat open apron under a white overcast: a prototype under a grey tarpaulin is towed out of a hangar by a small tractor into the daylight, the tarpaulin creasing over the shape underneath and never revealing it, nobody walking alongside. The camera is static and locked, wide, and holds as it goes.\", \"weight\": 5.0, \"duration_hint\": \"5.0\", \"speakerCharIdxs\": []}, {\"prompt\": \"On flat open ground at a launch site, a low horizon and empty sky behind: a missile is winched from horizontal to vertical on a launch rail, the whole body swinging up past the frame and coming to rest hard against its stops, two men steadying it with a pole. The camera is static and locked, low. No marking or stencil is legible.\", \"weight\": 5.0, \"duration_hint\": \"5.0\", \"speakerCharIdxs\": []}, {\"prompt\": \"Seen from inside a concrete bunker at the same launch site, through a horizontal observation slit on a long lens: the missile goes, the exhaust washes the frame to white, and the camera loses it completely, hunting up and left across empty sky and finding nothing. It gives up and settles back on the smoking rail. Handheld and unsteady.\", \"weight\": 5.0, \"duration_hint\": \"5.0\", \"speakerCharIdxs\": []}], \"style_line\": \"Nineteen fifties archival documentary photography on 16mm black and white reversal stock, hard blown-out white highlights with no roll-off and solid black shadows with nothing recoverable inside them, a narrow silver midtone band, heavy silver grain and gate weave, soft period optics, static locked observational camera energy, flat and unglamorous, no grading of any kind.\", \"background\": null, \"refVideos\": [null, null, null], \"refAudios\": [null, null, null], \"overall_soundscape\": \"a wind tunnel fan running up and holding at a steady roar, riveting and panel work echoing in a large empty hall, aluminium sheets laid down on a concrete floor, paper and drawing tubes, a tractor at low revs, a winch under load and a heavy body coming up against its stops, wind across open ground, a klaxon twice, a rocket motor lighting and going away until only wind is left\", \"non_diegetic_music\": \"N/A\", \"dialogue_language\": \"English\", \"analyze_provider\": \"gemini\"}",
+      "model": [
+        "146",
+        0
+      ],
+      "clip": [
+        "128",
+        0
+      ],
+      "vae": [
+        "119",
+        0
+      ],
+      "audio_vae": [
+        "120",
+        0
+      ],
+      "model_fl2va": [
+        "173",
+        0
+      ]
+    },
+    "class_type": "MuseMinimaxDirector",
+    "_meta": {
+      "title": "Muse Minimax Director"
+    }
+  },
+  "182": {
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "Muse/Video/jourdain_C2_livre-blanc_b",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": false,
+      "images": [
+        "181",
+        4
+      ],
+      "audio": [
+        "181",
+        5
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Seed 1"
+    }
+  },
+  "183": {
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "Muse/Video/jourdain_C2_livre-blanc_b",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": false,
+      "images": [
+        "181",
+        6
+      ],
+      "audio": [
+        "181",
+        7
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Seed  2"
+    }
+  },
+  "184": {
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "Muse/Video/jourdain_C2_livre-blanc_b",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": false,
+      "images": [
+        "181",
+        8
+      ],
+      "audio": [
+        "181",
+        9
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Seed 3"
+    }
+  },
+  "185": {
+    "inputs": {
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "Muse/Video/jourdain_C2_livre-blanc_b",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": false,
+      "images": [
+        "181",
+        10
+      ],
+      "audio": [
+        "181",
+        11
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Seed 4"
+    }
+  },
+  "190": {
+    "inputs": {
+      "max_resolution": 0,
+      "jpeg_quality": 80,
+      "suppress_default_preview": true,
+      "preview_frames": 124,
+      "preview_fps": 24,
+      "model": [
+        "127",
+        0
+      ],
+      "vae": [
+        "147",
+        0
+      ]
+    },
+    "class_type": "ModelPreviewOverrideKJ",
+    "_meta": {
+      "title": "Preview Mode for Ref Model"
+    }
+  }
+}

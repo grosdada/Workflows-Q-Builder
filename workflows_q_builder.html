@@ -1,0 +1,3195 @@
+﻿<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workflows Q-builder</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #141619;
+      --panel: #202329;
+      --panel-2: #292e35;
+      --field: #111315;
+      --text: #f2f4f7;
+      --muted: #aab2bd;
+      --line: #3b424c;
+      --accent: #6bb7ff;
+      --accent-2: #acd86b;
+      --danger: #ff7070;
+      --on-accent: #071018;
+      --focus-ring: rgba(107, 183, 255, 0.18);
+      --backdrop: rgba(0, 0, 0, 0.68);
+      --alt-bg: #2b3440;
+      --alt-line: #5d7188;
+      --alt-text: #eaf4ff;
+    }
+
+    /* Theme clair : seules les variables changent, aucune regle dupliquee. */
+    body.theme-light {
+      color-scheme: light;
+      --bg: #eef1f5;
+      --panel: #ffffff;
+      --panel-2: #e6eaf0;
+      --field: #ffffff;
+      --text: #14181d;
+      --muted: #566072;
+      --line: #c7cfda;
+      --accent: #1f6feb;
+      --accent-2: #3f7d22;
+      --danger: #c62828;
+      --on-accent: #ffffff;
+      --focus-ring: rgba(31, 111, 235, 0.20);
+      --backdrop: rgba(20, 24, 29, 0.35);
+      --alt-bg: #dde6f2;
+      --alt-line: #9db4d0;
+      --alt-text: #14304f;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      width: min(1220px, calc(100vw - 32px));
+      margin: 24px auto 40px;
+    }
+
+    header {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+
+    .sub {
+      margin: 4px 0 0;
+      color: var(--muted);
+    }
+
+    .header-controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 0 0 auto;
+    }
+
+    .lang-switch {
+      display: flex;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    .lang-option {
+      min-height: 34px;
+      padding: 6px 12px;
+      border: 0;
+      border-radius: 0;
+      background: var(--panel);
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+    }
+
+    .lang-option.active {
+      background: var(--accent);
+      color: var(--on-accent);
+    }
+
+    .icon-button {
+      min-height: 34px;
+      width: 38px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      background: var(--panel);
+      color: var(--text);
+    }
+
+    /* Un seul pictogramme visible : la lune en theme sombre (clic = passer au
+       clair), le soleil en theme clair. */
+    .icon-button .icon-sun { display: none; }
+    body.theme-light .icon-button .icon-moon { display: none; }
+    body.theme-light .icon-button .icon-sun { display: block; }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    .settings,
+    .ask {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+      margin-bottom: 16px;
+    }
+
+    .settings {
+      grid-template-columns: minmax(0, 1.4fr) minmax(180px, 0.7fr) minmax(180px, 0.7fr);
+    }
+
+    /* Flex et pas grid : masquer le selecteur LTX en mode H3 (ou l'inverse)
+       ferait glisser tous les champs suivants d'une colonne dans une grille. */
+    .ask-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: end;
+    }
+
+    .ask-grid > label,
+    .ask-grid > .field {
+      flex: 0 0 auto;
+      width: 120px;
+    }
+
+    .ask-grid > .field:first-child {
+      flex: 1 1 280px;
+      width: auto;
+      min-width: 240px;
+    }
+
+    .ask-grid > label:nth-last-child(2) { width: 200px; }
+
+    .ask-grid > button { flex: 0 0 140px; }
+
+    /* Bascule LTX / H3 : on masque, on ne redefinit jamais le display d'origine.
+       Trois etats : LTX, H3 Director (CUTs + refs), H3 T2V simple (prompt). */
+    body:not(.mode-h3) .h3-only,
+    body:not(.mode-h3) .h3dir-only,
+    body:not(.mode-h3) .h3t2v-only { display: none !important; }
+    body.mode-h3 .ltx-only { display: none !important; }
+    body.mode-h3:not(.engine-director) .h3dir-only { display: none !important; }
+    body.mode-h3:not(.engine-t2v) .h3t2v-only { display: none !important; }
+    body.mode-h3.engine-director .prompt-only { display: none !important; }
+
+    .h3-panel {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+      margin-bottom: 16px;
+    }
+
+    .h3-grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      align-items: end;
+    }
+
+    .h3-grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      align-items: end;
+    }
+
+    .h3-section-title {
+      margin: 4px 0 0;
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+
+    .h3-ref-row {
+      display: grid;
+      grid-template-columns: 34px minmax(150px, 0.9fr) minmax(0, 2.2fr) 150px;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .h3-ref-row .ref-num {
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+    }
+
+    .h3-ref-row input,
+    .h3-ref-row select {
+      min-height: 34px;
+    }
+
+    .h3-hint {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .h3-hint.warn { color: var(--danger); }
+
+    .shot-cuts {
+      min-height: 130px;
+      font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+      font-size: 13px;
+    }
+
+    .cuts-info {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .cuts-info.warn { color: var(--danger); }
+
+    .api-row {
+      display: none;
+      grid-template-columns: 180px minmax(0, 1fr) 260px;
+      gap: 12px;
+      align-items: end;
+    }
+
+    #refreshModels {
+      padding: 2px 8px;
+      font-size: 11px;
+    }
+
+    .api-row.active { display: grid; }
+
+    #loadPromptHtml {
+      background: var(--alt-bg);
+      border-color: var(--alt-line);
+      color: var(--alt-text);
+    }
+
+    .style-custom {
+      display: none;
+      margin-top: 6px;
+      text-transform: none;
+      font-weight: 500;
+    }
+
+    .style-custom.active {
+      display: block;
+    }
+
+    .workflow-overrides label {
+      min-width: 0;
+    }
+
+    .workflow-overrides select,
+    .workflow-overrides input {
+      min-height: 38px;
+    }
+
+    .ask-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .key-state {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 40px;
+      color: var(--muted);
+    }
+
+    dialog {
+      width: min(520px, calc(100vw - 32px));
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      color: var(--text);
+      padding: 0;
+    }
+
+    dialog::backdrop {
+      background: var(--backdrop);
+    }
+
+    .modal {
+      display: grid;
+      gap: 14px;
+      padding: 18px;
+    }
+
+    .modal h2 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    .history-list {
+      display: grid;
+      gap: 8px;
+      max-height: 360px;
+      overflow: auto;
+    }
+
+    .history-item {
+      display: grid;
+      gap: 8px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--field);
+    }
+
+    .history-text {
+      color: var(--muted);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 400px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    label,
+    .field {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
+    /* .field a l'allure d'un label sans en etre un : un <label> transmet le
+       clic a son premier controle, donc cliquer le libelle ou le vide autour
+       ouvrait la fenetre de saisie de la cle. */
+
+    input,
+    textarea,
+    select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--field);
+      color: var(--text);
+      font: inherit;
+      padding: 9px 10px;
+      outline: none;
+    }
+
+    textarea {
+      min-height: 112px;
+      resize: vertical;
+    }
+
+    input:focus,
+    textarea:focus,
+    select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--focus-ring);
+    }
+
+    button {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-2);
+      color: var(--text);
+      font: inherit;
+      font-weight: 750;
+      padding: 10px 12px;
+      cursor: pointer;
+      min-height: 40px;
+    }
+
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--on-accent);
+    }
+
+    button.danger { color: var(--danger); }
+    button:hover { filter: brightness(1.08); }
+
+    .shots {
+      display: grid;
+      gap: 12px;
+    }
+
+    .shot {
+      padding: 12px;
+    }
+
+    .shot-top {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr) 132px 180px auto auto;
+      gap: 10px;
+      align-items: end;
+      margin-bottom: 10px;
+    }
+
+    .shot-image-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(180px, 0.45fr) auto;
+      gap: 10px;
+      align-items: end;
+      margin-bottom: 10px;
+    }
+
+    .path-row {
+      margin-bottom: 10px;
+    }
+
+    .thumb-row {
+      display: grid;
+      grid-template-columns: 96px minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      margin: 2px 0 10px;
+    }
+
+    .thumb {
+      width: 96px;
+      height: 64px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--field);
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .image-status {
+      color: var(--muted);
+      font-size: 12px;
+      overflow-wrap: anywhere;
+      min-height: 20px;
+    }
+
+    .num {
+      width: 34px;
+      height: 40px;
+      display: grid;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-2);
+      color: var(--accent-2);
+      font-weight: 800;
+    }
+
+    .shot textarea { min-height: 128px; }
+
+    .side {
+      position: sticky;
+      top: 16px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .side .panel { padding: 14px; }
+
+    .run-options {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 10px;
+      align-items: end;
+      margin-bottom: 12px;
+    }
+
+    .workflow-overrides {
+      display: grid;
+      grid-template-columns: minmax(90px, 0.8fr) minmax(90px, 0.8fr) minmax(130px, 1fr) minmax(90px, 0.8fr);
+      gap: 10px;
+      margin: 0 0 12px;
+    }
+
+    .load-workflow-row {
+      display: none;
+      margin: 0 0 12px;
+    }
+
+    .load-workflow-row.active {
+      display: grid;
+    }
+
+    .workflow-path-controls {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: end;
+    }
+
+    .check {
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text);
+      text-transform: none;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .check input {
+      width: auto;
+    }
+
+    .actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .actions.three {
+      grid-template-columns: minmax(90px, 0.8fr) minmax(90px, 0.8fr) minmax(130px, 1fr) minmax(90px, 0.8fr);
+    }
+
+    .command {
+      min-height: 260px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font: 12px/1.45 ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+    }
+
+    .status {
+      min-height: 20px;
+      margin: 10px 0 0;
+      color: var(--muted);
+    }
+
+    .warn { color: var(--danger); }
+
+    @media (max-width: 980px) {
+      .layout,
+      .settings,
+      .ask-grid,
+      .api-row,
+      .workflow-overrides,
+      .workflow-path-controls {
+        grid-template-columns: 1fr;
+      }
+
+      .side { position: static; }
+
+      .shot-top {
+        grid-template-columns: 34px minmax(0, 1fr) 132px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Workflows Q-builder</h1>
+        <p class="sub">Prepare des files multi-shots LTX et MiniMax H3, et genere la commande PowerShell pour ComfyUI.</p>
+      </div>
+      <div class="header-controls">
+        <div class="lang-switch" role="group" aria-label="Langue">
+          <button type="button" class="lang-option active" data-lang="fr">FR</button>
+          <button type="button" class="lang-option" data-lang="en">EN</button>
+        </div>
+        <button type="button" id="themeToggle" class="icon-button" title="Theme clair / sombre" aria-label="Theme clair / sombre">
+          <svg class="icon-moon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <path fill="currentColor" d="M20.4 14.3A8.5 8.5 0 0 1 9.7 3.6a8.5 8.5 0 1 0 10.7 10.7z"/>
+          </svg>
+          <svg class="icon-sun" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <circle cx="12" cy="12" r="4.2" fill="currentColor"/>
+            <g stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+              <path d="M12 2.6v2.4M12 19v2.4M4.2 12H1.8M22.2 12h-2.4M5.6 5.6 7.3 7.3M16.7 16.7l1.7 1.7M18.4 5.6l-1.7 1.7M7.3 16.7l-1.7 1.7"/>
+            </g>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <section class="ask panel">
+      <div class="ask-grid">
+        <div class="field">
+          <span class="ask-title-row">
+            <label for="askText">ASK GPT</label>
+            <span class="ask-title-row">
+              <button id="clearAsk" type="button">Clear</button>
+              <button id="openHistory" type="button">Historique</button>
+              <button id="loadPromptHtml" type="button">Load prompts HTML</button>
+              <input id="promptHtmlFile" type="file" accept=".html,.htm,text/html" hidden>
+            </span>
+          </span>
+          <textarea id="askText" placeholder="Decris la scene, le style, les points de vue, le rythme, ce qu'il faut eviter..."></textarea>
+        </div>
+        <label>
+          <span class="ltx-only">Nombre de shots</span>
+          <span class="h3-only">Nombre de scenes</span>
+          <input id="shotCount" type="number" min="1" max="20" value="5">
+        </label>
+        <label>
+          Modele
+          <select id="modelFamily">
+            <option value="ltx" selected>LTX</option>
+            <option value="h3">MiniMax H3</option>
+          </select>
+        </label>
+        <label class="ltx-only">
+          LTX
+          <select id="ltxVersion">
+            <option value="2.5" selected>2.5</option>
+            <option value="2.3">2.3</option>
+          </select>
+        </label>
+        <label class="h3-only">
+          Moteur H3
+          <select id="h3Engine">
+            <option value="director" selected>Director (CUTs + refs)</option>
+            <option value="t2v">T2V simple (prompt)</option>
+          </select>
+        </label>
+        <label>
+          Mode
+          <select id="aiMode">
+            <option value="api">API OpenAI</option>
+            <option value="local">LOCAL / Codex</option>
+          </select>
+        </label>
+        <label>
+          Camera / Style preset
+          <select id="globalStylePreset"></select>
+          <textarea id="globalCustomStyle" class="style-custom" placeholder="Custom camera/style prompt"></textarea>
+        </label>
+        <button class="primary" id="askGenerate">Remplir les shots</button>
+      </div>
+      <div class="api-row" id="apiRow">
+        <label>
+          Fournisseur
+          <select id="apiProvider">
+            <option value="openai" selected>OpenAI</option>
+            <option value="anthropic">Anthropic (Claude)</option>
+            <option value="google">Google (Gemini)</option>
+          </select>
+        </label>
+        <div class="field">
+          <span id="keyLabel">Cle API</span>
+          <div class="key-state">
+            <button id="openKeyModal" type="button">Ajouter / changer</button>
+            <span id="keyStatus">Aucune cle en memoire</span>
+          </div>
+        </div>
+        <div class="field">
+          <span class="ask-title-row">
+            <label for="apiModel">Modele</label>
+            <button id="refreshModels" type="button">Rafraichir</button>
+          </span>
+          <select id="apiModel"></select>
+        </div>
+      </div>
+      <p class="status" id="askStatus"></p>
+    </section>
+
+    <dialog id="keyModal">
+      <form class="modal" method="dialog">
+        <h2 id="keyModalTitle">Cle API</h2>
+        <label>
+          Cle
+          <input id="apiKeyInput" type="password" autocomplete="off" placeholder="sk-...">
+        </label>
+        <label>
+          <span>
+            <input id="rememberKey" type="checkbox">
+            Se souvenir de la cle sur cet ordinateur
+          </span>
+        </label>
+        <div class="actions">
+          <button id="saveKey" class="primary" value="save" type="button">Valider</button>
+          <button id="forgetKey" class="danger" value="forget" type="button">Oublier</button>
+          <button value="cancel">Annuler</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="historyModal">
+      <form class="modal" method="dialog">
+        <h2>Historique ASK GPT</h2>
+        <div class="history-list" id="historyList"></div>
+        <div class="actions">
+          <button id="clearHistory" class="danger" type="button">Effacer</button>
+          <button value="close">Fermer</button>
+        </div>
+      </form>
+    </dialog>
+
+    <section class="settings panel">
+      <label>
+        Dossier
+        <input id="folder" value="C:\Users\ALFRED HITCHCOCK\Documents\Codex\2026-05-22\tu-as-acces-a-mon-comfy\LTX Prompt Builder DEV">
+      </label>
+      <label>
+        <span class="ltx-only">Fichier prompts</span>
+        <span class="h3-only">Fichier briefs H3</span>
+        <input id="promptFile" value="ltx_custom_queue.json">
+      </label>
+      <label>
+        Serveur ComfyUI
+        <input id="server" value="http://127.0.0.1:8188">
+      </label>
+    </section>
+
+    <section class="h3-panel panel h3-only">
+      <p class="h3-section-title">Projet H3 — reglages communs a toutes les scenes</p>
+      <div class="h3-grid-4 h3dir-only">
+        <label>
+          Dossier projet
+          <input id="h3ProjectDir" placeholder="Ex: E:\H3-Comfy-Project\mon-projet">
+        </label>
+        <label>
+          Sous-dossier refs
+          <input id="h3RefsSubdir" value="refs">
+        </label>
+        <label>
+          Link mode
+          <select id="h3LinkMode">
+            <option value="copy_project" selected>copy_project</option>
+            <option value="junction">junction</option>
+            <option value="absolute">absolute</option>
+            <option value="copy">copy</option>
+          </select>
+        </label>
+        <label>
+          Prefixe de sortie
+          <input id="h3OutputName" placeholder="Muse/Video/&lt;projet&gt;">
+        </label>
+      </div>
+      <div class="h3-grid-4">
+        <label>
+          Aspect ratio
+          <select id="h3AspectRatio">
+            <option value="16:9 (Widescreen)" selected>16:9 (Widescreen)</option>
+            <option value="4:3 (Standard)">4:3 (Standard)</option>
+            <option value="3:2 (Photo)">3:2 (Photo)</option>
+            <option value="1:1 (Square)">1:1 (Square)</option>
+            <option value="9:16 (Portrait Widescreen)">9:16 (Portrait Widescreen)</option>
+            <option value="2:3 (Portrait Photo)">2:3 (Portrait Photo)</option>
+            <option value="3:4 (Portrait Standard)">3:4 (Portrait Standard)</option>
+            <option value="21:9 (Ultrawide)">21:9 (Ultrawide)</option>
+          </select>
+        </label>
+        <label>
+          Megapixels
+          <input id="h3Megapixels" type="number" min="0.1" max="4" step="0.1" value="0.9">
+        </label>
+        <label class="h3dir-only">
+          Steps
+          <input id="h3Steps" type="number" min="1" max="100" value="20">
+        </label>
+        <label class="h3t2v-only">
+          Duree (s)
+          <input id="h3T2vDuration" type="number" min="1" max="15" step="0.5" value="5">
+        </label>
+        <label class="h3t2v-only">
+          Plans par scene (multishot)
+          <input id="h3T2vShots" type="number" min="1" max="6" step="1" value="1">
+        </label>
+      </div>
+      <div class="h3-grid-4 h3dir-only">
+        <label>
+          Sampler
+          <select id="h3Sampler">
+            <option value="res_multistep" selected>res_multistep</option>
+            <option value="euler">euler</option>
+            <option value="euler_ancestral">euler_ancestral</option>
+            <option value="dpmpp_2m">dpmpp_2m</option>
+          </select>
+        </label>
+        <label>
+          Scheduler
+          <select id="h3Scheduler">
+            <option value="simple" selected>simple</option>
+            <option value="beta">beta</option>
+            <option value="normal">normal</option>
+            <option value="sgm_uniform">sgm_uniform</option>
+          </select>
+        </label>
+        <label>
+          Ref image size
+          <select id="h3RefImageSize">
+            <option value="match" selected>match</option>
+            <option value="max">max</option>
+          </select>
+        </label>
+        <label>
+          Langue des dialogues
+          <input id="h3DialogueLanguage" value="English">
+        </label>
+      </div>
+      <label class="h3dir-only">
+        Style line (injecte en tete de detailed_description)
+        <textarea id="h3StyleLine" placeholder="Photographie, lumiere, palette, energie camera. Le preset Camera / Style l'alimente automatiquement."></textarea>
+      </label>
+      <div class="h3-grid-3 h3dir-only">
+        <label>
+          Soundscape diegetique
+          <textarea id="h3Soundscape" placeholder="N/A si rien"></textarea>
+        </label>
+        <label>
+          Musique non diegetique
+          <textarea id="h3Music" placeholder="N/A si rien"></textarea>
+        </label>
+        <label>
+          Decor (background) — fichier + description
+          <input id="h3BackgroundFile" placeholder="decor.png">
+          <textarea id="h3BackgroundDescription" placeholder="the setting: ..."></textarea>
+        </label>
+      </div>
+      <p class="h3-section-title h3dir-only">Personnages — l'ordre fixe &lt;Subject 1..N&gt;, un slot sans image est ignore</p>
+      <div id="h3Refs" class="h3dir-only"></div>
+      <p class="h3-hint" id="h3Hint"></p>
+    </section>
+
+    <div class="layout">
+      <section class="shots" id="shots"></section>
+
+      <aside class="side">
+        <section class="panel">
+          <label>
+            Negatif commun
+            <textarea id="negative">low quality, blurry, smeared motion, still frame, frozen motion, motionless subject, static bubbles, static particles, warped anatomy, distorted object shape, identity drift, composition drift, background replacement, changing subject, duplicate subject, cartoon, CGI, plastic texture, over-sharpened, flicker, exposure change, luminosity change, text, subtitles, watermark, borders, frame artifacts, cuts, transitions, scene change, camera shake</textarea>
+          </label>
+        </section>
+
+        <section class="panel">
+          <div class="run-options h3dir-only">
+            <label>
+              Sortie H3 Director
+              <select id="h3OutputMode">
+                <option value="queue" selected>File ComfyUI via API (h3_director_api.json)</option>
+                <option value="files">Fichiers .json a glisser dans ComfyUI (template UI)</option>
+              </select>
+            </label>
+            <div class="field">
+              <label for="h3TemplatePath">Template H3 Director</label>
+              <div class="workflow-path-controls">
+                <input id="h3TemplatePath" value="h3_director_api.json">
+                <button id="browseH3Template" type="button">Parcourir</button>
+              </div>
+              <input id="h3TemplateFile" type="file" accept=".json,application/json" hidden>
+            </div>
+            <label>
+              Dossier des workflows produits
+              <input id="h3OutDir" value="h3_workflows">
+            </label>
+            <label>
+              <span>
+                <input id="h3Preview" type="checkbox" checked>
+                Afficher l'apercu du prompt compile
+              </span>
+            </label>
+          </div>
+          <div class="run-options h3t2v-only">
+            <label>
+              Workflow H3 T2V (format API)
+              <input id="h3T2vWorkflow" value="h3_t2v_api.json">
+            </label>
+          </div>
+          <div class="run-options ltx-only">
+            <label>
+              Workflow preset
+              <select id="workflowPreset">
+                <option value="ltx25_t2v" selected>LTX 2.5 T2V</option>
+                <option value="ltx25_i2v">LTX 2.5 I2V</option>
+                <option value="ltx25_flf2v">LTX 2.5 FLF2V</option>
+                <option value="t2v">LTX 2.3 T2V</option>
+                <option value="fast">LTX 2.3 I2V fast</option>
+                <option value="video_i2v_hq">LTX 2.3 I2V quality</option>
+                <option value="load">Custom workflow...</option>
+              </select>
+            </label>
+          </div>
+          <div class="workflow-overrides ltx-only">
+            <label>
+              Frame preset
+              <select id="framePreset">
+                <option value="">Workflow</option>
+                <option value="49">49</option>
+                <option value="73">73</option>
+                <option value="97">97</option>
+                <option value="121">121</option>
+                <option value="153">153</option>
+                <option value="193">193</option>
+                <option value="241">241</option>
+                <option value="289">289</option>
+              </select>
+              <input id="frameCount" type="number" min="1" placeholder="Custom frame">
+            </label>
+            <label>
+              Format ratio
+              <select id="formatPreset">
+                <option value="16:9">16:9</option>
+                <option value="4:3">4:3</option>
+                <option value="3:2">3:2</option>
+                <option value="1:1">1:1</option>
+                <option value="9:16">9:16</option>
+                <option value="2:3">2:3</option>
+                <option value="21:9">21:9</option>
+              </select>
+            </label>
+            <label>
+              Size
+              <select id="sizePreset"></select>
+              <input id="videoSize" placeholder="Custom size">
+            </label>
+            <label>
+              Seed
+              <input id="noiseSeed" inputmode="numeric" placeholder="Workflow">
+            </label>
+          </div>
+          <div class="load-workflow-row ltx-only field" id="loadWorkflowRow">
+            <label for="loadWorkflowPath">Workflow charge</label>
+            <div class="workflow-path-controls">
+              <input id="loadWorkflowPath" value="\\192.168.1.44\nas\Stable-diffusion-stuff\ComfyUI-workflows\Workflow-2026\Load-Worlflow" placeholder="Dossier ou fichier .json">
+              <button id="browseWorkflow" type="button">Parcourir</button>
+            </div>
+            <input id="workflowFile" type="file" accept=".json,application/json" hidden>
+          </div>
+          <div class="actions three">
+            <button class="primary" id="build">Generer</button>
+            <button id="copy">Copier</button>
+            <button class="danger" id="clearAll">Clear all</button>
+          </div>
+          <p class="status" id="status"></p>
+          <textarea class="command" id="command" spellcheck="false"></textarea>
+        </section>
+      </aside>
+    </div>
+  </main>
+
+  <template id="shotTemplate">
+    <article class="shot panel">
+      <div class="shot-top">
+        <div class="num"></div>
+        <label>
+          Nom du plan
+          <input class="shot-name">
+        </label>
+        <label>
+          Seed
+          <input class="shot-seed" inputmode="numeric">
+        </label>
+        <label>
+          Style override
+          <select class="shot-style"></select>
+          <input class="shot-custom-style style-custom" placeholder="Custom style prompt">
+        </label>
+        <button class="shot-copy" type="button">Copy</button>
+        <button class="shot-clear danger" type="button">Clear</button>
+      </div>
+      <div class="h3dir-only shot-h3">
+        <label>
+          CUTs — une ligne par plan : <code>secondes | texte | locuteurs</code> (locuteurs = numeros de Subject, optionnel)
+          <textarea class="shot-cuts" placeholder="3.5 | &lt;Subject 1&gt; pushes the hatch open in the corridor of the station, breathing hard. He says, &quot;Hold back.&quot; | 1
+4.0 | Wide shot of the corridor, &lt;Subject 1&gt; walks away into the smoke."></textarea>
+        </label>
+        <div class="cuts-info"></div>
+      </div>
+      <div class="shot-image-row ltx-only">
+        <label>
+          Image source ComfyUI
+          <input class="shot-image" placeholder="Vide = image du workflow">
+        </label>
+        <label>
+          Upload image
+          <input class="shot-file" type="file" accept="image/*">
+        </label>
+        <button class="shot-describe" type="button">Describe</button>
+      </div>
+      <label class="path-row ltx-only">
+        Chemin image local pour Python
+        <input class="shot-image-path" placeholder="Ex: C:\Images\shot01.png">
+      </label>
+      <div class="thumb-row ltx-only">
+        <div class="thumb">No image</div>
+        <div class="image-status"></div>
+      </div>
+      <label class="prompt-only">
+        Prompt
+        <textarea class="shot-prompt"></textarea>
+      </label>
+    </article>
+  </template>
+
+  <script>
+    const storedKeyName = "workflowsQBuilder.openaiApiKey";
+    const askHistoryKey = "workflowsQBuilder.askHistory";
+    // L'ancienne app stockait sous un autre prefixe : sans reprise, la cle et
+    // l'historique deja enregistres par David disparaissaient au changement de nom.
+    const legacyKeyName = "ltxPromptQueueBuilder.openaiApiKey";
+    const legacyHistoryKey = "ltxPromptQueueBuilder.askHistory";
+
+    function migrateLegacyStorage() {
+      try {
+        if (!localStorage.getItem(storedKeyName)) {
+          const legacyKey = localStorage.getItem(legacyKeyName);
+          if (legacyKey) localStorage.setItem(storedKeyName, legacyKey);
+        }
+        if (!localStorage.getItem(askHistoryKey)) {
+          const legacyHistory = localStorage.getItem(legacyHistoryKey);
+          if (legacyHistory) localStorage.setItem(askHistoryKey, legacyHistory);
+        }
+      } catch {}
+    }
+
+    migrateLegacyStorage();
+
+    /* ------------------------------------------------------ langue et theme */
+
+    const langStorageKey = "workflowsQBuilder.lang";
+    const themeStorageKey = "workflowsQBuilder.theme";
+    let LANG = localStorage.getItem(langStorageKey) === "en" ? "en" : "fr";
+
+    // Textes complets. Les valeurs techniques (res_multistep, 16:9 (Widescreen),
+    // copy_project...) ne sont pas traduites : ce sont les valeurs attendues par
+    // ComfyUI, les afficher autrement induirait en erreur.
+    const I18N_TEXT = {
+      "Prepare des files multi-shots LTX et MiniMax H3, et genere la commande PowerShell pour ComfyUI.":
+        "Build LTX and MiniMax H3 multi-shot queues, and generate the PowerShell command for ComfyUI.",
+      "Historique": "History",
+      "Load prompts HTML": "Load prompts HTML",
+      "Nombre de shots": "Shot count",
+      "Nombre de scenes": "Scene count",
+      "Modele": "Model",
+      "Moteur H3": "H3 engine",
+      "Director (CUTs + refs)": "Director (CUTs + refs)",
+      "T2V simple (prompt)": "Simple T2V (prompt)",
+      "Mode": "Mode",
+      "API OpenAI": "Provider API",
+      "LOCAL / Codex": "LOCAL / Codex",
+      "Camera / Style preset": "Camera / style preset",
+      "Remplir les shots": "Fill the shots",
+      "Fournisseur": "Provider",
+      "Cle API": "API key",
+      "Ajouter / changer": "Add / change",
+      "Aucune cle en memoire": "No key in memory",
+      "Rafraichir": "Refresh",
+      "Cle": "Key",
+      "Se souvenir de la cle sur cet ordinateur": "Remember the key on this computer",
+      "Valider": "Save",
+      "Oublier": "Forget",
+      "Annuler": "Cancel",
+      "Historique ASK GPT": "ASK GPT history",
+      "Effacer": "Clear",
+      "Fermer": "Close",
+      "Dossier": "Folder",
+      "Fichier prompts": "Prompts file",
+      "Fichier briefs H3": "H3 briefs file",
+      "Serveur ComfyUI": "ComfyUI server",
+      "Projet H3 — reglages communs a toutes les scenes": "H3 project — settings shared by every scene",
+      "Dossier projet": "Project folder",
+      "Sous-dossier refs": "Refs subfolder",
+      "Link mode": "Link mode",
+      "Prefixe de sortie": "Output prefix",
+      "Aspect ratio": "Aspect ratio",
+      "Megapixels": "Megapixels",
+      "Steps": "Steps",
+      "Duree (s)": "Duration (s)",
+      "Plans par scene (multishot)": "Shots per scene (multishot)",
+      "Sampler": "Sampler",
+      "Scheduler": "Scheduler",
+      "Ref image size": "Ref image size",
+      "Langue des dialogues": "Dialogue language",
+      "Style line (injecte en tete de detailed_description)": "Style line (injected at the top of detailed_description)",
+      "Soundscape diegetique": "Diegetic soundscape",
+      "Musique non diegetique": "Non-diegetic music",
+      "Decor (background) — fichier + description": "Background — file + description",
+      "Personnages — l'ordre fixe <Subject 1..N>, un slot sans image est ignore":
+        "Characters — order sets <Subject 1..N>, a slot without an image is ignored",
+      "Negatif commun": "Shared negative",
+      "Sortie H3 Director": "H3 Director output",
+      "File ComfyUI via API (h3_director_api.json)": "ComfyUI queue via API (h3_director_api.json)",
+      "Fichiers .json a glisser dans ComfyUI (template UI)": "Drop-in .json files for ComfyUI (UI template)",
+      "Template H3 Director": "H3 Director template",
+      "Parcourir": "Browse",
+      "Dossier des workflows produits": "Folder for produced workflows",
+      "Afficher l'apercu du prompt compile": "Show the compiled prompt preview",
+      "Workflow H3 T2V (format API)": "H3 T2V workflow (API format)",
+      "Workflow preset": "Workflow preset",
+      "Custom workflow...": "Custom workflow...",
+      "Frame preset": "Frame preset",
+      "Workflow": "Workflow",
+      "Format ratio": "Format ratio",
+      "Size": "Size",
+      "Seed": "Seed",
+      "Workflow charge": "Loaded workflow",
+      "Generer": "Generate",
+      "Copier": "Copy",
+      "Clear all": "Clear all",
+      "Nom du plan": "Shot name",
+      "Style override": "Style override",
+      "CUTs — une ligne par plan :": "CUTs — one line per shot:",
+      "secondes | texte | locuteurs": "seconds | text | speakers",
+      "(locuteurs = numeros de Subject, optionnel)": "(speakers = Subject numbers, optional)",
+      "Image source ComfyUI": "ComfyUI source image",
+      "Upload image": "Upload image",
+      "Describe": "Describe",
+      "Chemin image local pour Python": "Local image path for Python",
+      "No image": "No image",
+      "Prompt": "Prompt",
+      "Theme clair / sombre": "Light / dark theme",
+      // placeholders
+      "Decris la scene, le style, les points de vue, le rythme, ce qu'il faut eviter...":
+        "Describe the scene, the style, the angles, the pacing, what to avoid...",
+      "Custom camera/style prompt": "Custom camera/style prompt",
+      "Ex: E:\\H3-Comfy-Project\\mon-projet": "Ex: E:\\H3-Comfy-Project\\my-project",
+      "Muse/Video/<projet>": "Muse/Video/<project>",
+      "Photographie, lumiere, palette, energie camera. Le preset Camera / Style l'alimente automatiquement.":
+        "Photography, light, palette, camera energy. The camera / style preset feeds this automatically.",
+      "N/A si rien": "N/A if none",
+      "the setting: ...": "the setting: ...",
+      "Custom frame": "Custom frame",
+      "Custom size": "Custom size",
+      "Dossier ou fichier .json": "Folder or .json file",
+      "Custom style prompt": "Custom style prompt",
+      "Vide = image du workflow": "Empty = workflow image",
+      "Ex: C:\\Images\\shot01.png": "Ex: C:\\Images\\shot01.png",
+      // messages fixes
+      "Remplis au moins un prompt.": "Fill in at least one prompt.",
+      "Remplis au moins une scene avec des CUTs.": "Fill in at least one scene with CUTs.",
+      "Decris d'abord la scene.": "Describe the scene first.",
+      "Aucune cle saisie.": "No key entered.",
+      "ASK GPT efface.": "ASK GPT cleared.",
+      "Historique efface.": "History cleared.",
+      "Demande rechargee.": "Request reloaded.",
+      "Commande copiee.": "Command copied.",
+      "Tous les prompts ont ete effaces.": "All prompts have been cleared.",
+      "Choisis une image dans ce shot avant Describe.": "Pick an image in this shot before Describe.",
+      "Description GPT en cours...": "Describing with the model...",
+      "Description ajoutee au prompt.": "Description added to the prompt.",
+      "Aucune demande pour le moment.": "No request yet.",
+      "Recharger": "Reload",
+      "Copie locale de l'image...": "Copying the image locally...",
+      "Copie locale du workflow...": "Copying the workflow locally...",
+      "Image liee au shot. Elle sera uploadee par Python au lancement.":
+        "Image linked to the shot. Python will upload it at launch.",
+      "Aucun prompt detecte dans ce HTML.": "No prompt found in this HTML.",
+      "Lance l'app avec le bouton .bat pour utiliser Parcourir.":
+        "Start the app with the .bat launcher to use Browse.",
+      "Image illisible (format data URL attendu).": "Unreadable image (data URL expected).",
+      "Reponse du modele illisible : ce n'est pas un tableau JSON.":
+        "Unreadable model answer: it is not a JSON array.",
+      "Le fournisseur n'a renvoye aucun modele utilisable.": "The provider returned no usable model.",
+      "Demande LOCAL copiee. Colle-la dans Codex, puis colle le JSON obtenu ici si tu veux que je l'integre.":
+        "LOCAL request copied. Paste it into Codex, then paste the JSON back here to load it.",
+      "LTX 2.5 demande un frame count de type 8n+1: 97, 121, 153, 193 ou 241.":
+        "LTX 2.5 needs a frame count of the form 8n+1: 97, 121, 153, 193 or 241.",
+      "LTX 2.5 demande une taille divisible par 32, par exemple 1280x704, 1536x864 ou 704x1280.":
+        "LTX 2.5 needs a size divisible by 32, for example 1280x704, 1536x864 or 704x1280."
+    };
+
+    // Fragments, pour les messages assembles a l'execution (compteurs, noms de
+    // fichiers, listes d'avertissements). Appliques du plus long au plus court
+    // pour qu'un fragment court n'ampute pas un fragment long.
+    const I18N_FRAGMENTS = [
+      ["Lance UN SEUL rendu en test avant d'empiler le lot: un job qui OOM ne bloque pas la file, les suivants echouent pareil.",
+       "Run a SINGLE render as a test before stacking the batch: a job that runs out of memory does not stop the queue, the next ones fail the same way."],
+      ["Les .json produits se glissent dans ComfyUI (un onglet par fichier), puis Run sur chacun.",
+       "The produced .json files drop into ComfyUI (one tab per file), then Run on each."],
+      ["Colle-la dans PowerShell, puis appuie sur Entree pour lancer la queue ComfyUI.",
+       "Paste it into PowerShell, then press Enter to start the ComfyUI queue."],
+      ["Les scenes partent directement dans la file ComfyUI.", "The scenes go straight into the ComfyUI queue."],
+      ["Colle-la dans PowerShell, puis Entree.", "Paste it into PowerShell, then Enter."],
+      ["Commande copiee.", "Command copied."],
+      ["Lance l'app via ltx_builder_server.py pour remplir le chemin automatiquement.",
+       "Start the app through the server to fill the path automatically."],
+      ["Un rendu H3 = 15s maximum, une scene = un workflow.", "One H3 render = 15s maximum, one scene = one workflow."],
+      ["glisse les images dans les slots Ref de l'UI Director avant de RUN, dans cet ordre.",
+       "drop the images into the Director Ref slots before RUN, in this order."],
+      ["H3 T2V natif : un prompt par scene, pas de refs ni de CUTs. Chaque scene est un job dans la file ComfyUI,",
+       "Native H3 T2V: one prompt per scene, no refs and no CUTs. Each scene is one job in the ComfyUI queue,"],
+      ["decoupe en deux scenes (_a / _b), sinon OOM au chunk 2", "split into two scenes (_a / _b), otherwise chunk 2 runs out of memory"],
+      ["a du dialogue sans locuteur : la voix ne sera attribuee a personne", "has dialogue without a speaker: the voice will not be attributed"],
+      ["sans image alors qu'une Ref plus loin en a une : la numerotation des Subject glisse",
+       "has no image while a later Ref does: the Subject numbering shifts"],
+      ["prompt(s) contiennent bien les coupes.", "prompt(s) do contain the cuts."],
+      ["plans par scene,", "shots per scene,"],
+      ["Multishot:", "Multishot:"],
+      ["chacun,", "each,"],
+      ["Au-dessus du plafond de", "Above the cap of"],
+      ["Sortie: file ComfyUI (API).", "Output: ComfyUI queue (API)."],
+      ["slot(s) sans fichier :", "slot(s) without a file:"],
+      ["au-dessus du plafond de", "above the cap of"],
+      ["personnage(s) declare(s)", "character(s) declared"],
+      ["personnage(s)", "character(s)"],
+      ["avec image.", "with an image."],
+      ["ligne ", "line "],
+      ["prompt(s) charges depuis le HTML.", "prompt(s) loaded from the HTML."],
+      ["LTX 2.5: prompts en paragraphe continu.", "LTX 2.5: prompts as one flowing paragraph."],
+      ["prompt(s) prets. Images liees:", "prompt(s) ready. Linked images:"],
+      ["Template H3 charge:", "H3 template loaded:"],
+      ["Workflow charge:", "Workflow loaded:"],
+      ["Liste des modeles", "Model list for"],
+      ["Descriptions:", "Descriptions:"],
+      ["Generation via", "Generating with"],
+      ["Reglages:", "Settings:"],
+      ["scene(s) H3,", "H3 scene(s),"],
+      ["au total.", "in total."],
+      ["avec image.", "with an image."],
+      ["Sortie: fichiers .json dans", "Output: .json files in"],
+      ["A corriger —", "To fix —"],
+      ["duree illisible", "unreadable duration"],
+      ["texte vide", "empty text"],
+      ["cite <Subject", "mentions <Subject"],
+      ["mais", "but"],
+      ["declare(s)", "declared"],
+      ["locuteur", "speaker"],
+      ["hors des", "outside the"],
+      ["personnages", "characters"],
+      ["scene(s)", "scene(s)"],
+      ["generes par", "generated by"],
+      ["modeles", "models"],
+      ["charges.", "loaded."],
+      ["en cours...", "in progress..."],
+      ["prete et stockee localement.", "ready and stored locally."],
+      ["prete. Elle n'est pas stockee.", "ready. It is not stored."],
+      ["oubliee.", "forgotten."],
+      ["Cle stockee sur cet ordinateur", "Key stored on this computer"],
+      ["Cle chargee en memoire", "Key loaded in memory"],
+      ["Aucune cle (", "No key ("],
+      ["ajoute sa cle API", "add its API key"],
+      ["pret.", "ready."],
+      ["Ajoute ta cle", "Add your"],
+      ["avec le bouton Ajouter / changer.", "key with the Add / change button."],
+      ["avant de decrire une image.", "before describing an image."],
+      ["a refuse la demande", "refused the request"],
+      ["n'a renvoye aucun texte.", "returned no text."],
+      ["Fichier choisi:", "File selected:"],
+      ["Image prete:", "Image ready:"],
+      ["Image choisie:", "Image selected:"],
+      ["Copie locale impossible", "Local copy failed"],
+      ["Workflow impossible a charger", "Workflow could not be loaded"],
+      ["Template refuse", "Template rejected"],
+      ["Shot", "Shot"],
+      ["efface.", "cleared."],
+      ["copie.", "copied."],
+      ["decrit.", "described."],
+      ["Refs:", "Refs:"],
+      ["CUT,", "CUT,"],
+      ["Preset:", "Preset:"],
+      ["Images liees:", "Linked images:"],
+      ["shots", "shots"]
+    ].sort((a, b) => b[0].length - a[0].length);
+
+    function t(text) {
+      if (LANG === "fr" || typeof text !== "string" || !text) return text;
+      const exact = I18N_TEXT[text.trim()];
+      if (exact) return text.replace(text.trim(), exact);
+      let out = text;
+      for (const [fr, en] of I18N_FRAGMENTS) {
+        if (out.includes(fr)) out = out.split(fr).join(en);
+      }
+      return out;
+    }
+
+    // La traduction se fait sur le DOM, en gardant l'original en data-fr : on
+    // peut donc revenir au francais sans recharger la page.
+    function translateNode(element) {
+      element.querySelectorAll("[placeholder]").forEach(node => {
+        if (!node.dataset.frPlaceholder) node.dataset.frPlaceholder = node.placeholder;
+        node.placeholder = LANG === "en" ? t(node.dataset.frPlaceholder) : node.dataset.frPlaceholder;
+      });
+      element.querySelectorAll("[title]").forEach(node => {
+        if (!node.dataset.frTitle) node.dataset.frTitle = node.getAttribute("title");
+        node.setAttribute("title", LANG === "en" ? t(node.dataset.frTitle) : node.dataset.frTitle);
+      });
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+          const parent = node.parentElement;
+          if (!parent) return NodeFilter.FILTER_REJECT;
+          // On ne touche ni au contenu saisi, ni aux zones remplies par le code.
+          if (parent.closest("script, style, textarea, .command, .history-text")) return NodeFilter.FILTER_REJECT;
+          return node.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+        }
+      });
+      const nodes = [];
+      while (walker.nextNode()) nodes.push(walker.currentNode);
+      nodes.forEach(node => {
+        if (node.frOriginal === undefined) node.frOriginal = node.nodeValue;
+        node.nodeValue = LANG === "en" ? t(node.frOriginal) : node.frOriginal;
+      });
+    }
+
+    function applyLanguage(lang) {
+      LANG = lang === "en" ? "en" : "fr";
+      localStorage.setItem(langStorageKey, LANG);
+      document.documentElement.lang = LANG;
+      document.querySelectorAll(".lang-option").forEach(button => {
+        button.classList.toggle("active", button.dataset.lang === LANG);
+      });
+      translateNode(document.body);
+      // Les zones ecrites par le code se regenerent dans la nouvelle langue.
+      if (typeof syncProviderUi === "function") syncProviderUi();
+      if (typeof updateAllCutsInfo === "function") updateAllCutsInfo();
+      if (typeof updateH3Hint === "function" && isH3()) updateH3Hint();
+      if (typeof buildCommand === "function") {
+        const command = document.querySelector("#command");
+        if (command && command.value) command.value = buildCommand();
+      }
+    }
+
+    function applyTheme(theme) {
+      const light = theme === "light";
+      document.body.classList.toggle("theme-light", light);
+      localStorage.setItem(themeStorageKey, light ? "light" : "dark");
+    }
+
+    /* ------------------------------------------------- fournisseurs de LLM */
+
+    // Une cle par fournisseur : basculer d'OpenAI a Claude ne doit pas obliger
+    // a ressaisir quoi que ce soit. Les listes ci-dessous ne sont qu'un secours
+    // hors ligne — le bouton Rafraichir demande au fournisseur ce qui existe
+    // vraiment aujourd'hui, ce qui evite qu'elles perimenent en silence.
+    const PROVIDERS = {
+      openai: {
+        label: "OpenAI",
+        keyPlaceholder: "sk-...",
+        keyPage: "platform.openai.com/api-keys",
+        fallbackModels: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-4.1"],
+        defaultModel: "gpt-5.5"
+      },
+      anthropic: {
+        label: "Anthropic (Claude)",
+        keyPlaceholder: "sk-ant-...",
+        keyPage: "console.anthropic.com/settings/keys",
+        fallbackModels: ["claude-opus-5", "claude-sonnet-5", "claude-fable-5", "claude-haiku-4-5-20251001"],
+        defaultModel: "claude-sonnet-5"
+      },
+      google: {
+        label: "Google (Gemini)",
+        keyPlaceholder: "AIza...",
+        keyPage: "aistudio.google.com/app/apikey",
+        fallbackModels: ["gemini-2.5-pro", "gemini-2.5-flash"],
+        defaultModel: "gemini-2.5-pro"
+      }
+    };
+
+    const apiKeys = {};
+    const modelCache = {};
+
+    function providerId() {
+      return document.querySelector("#apiProvider")?.value || "openai";
+    }
+
+    function providerConfig(id = providerId()) {
+      return PROVIDERS[id] || PROVIDERS.openai;
+    }
+
+    function keyStorageName(id) {
+      return `${storedKeyName}.${id}`;
+    }
+
+    function loadStoredKeys() {
+      Object.keys(PROVIDERS).forEach(id => {
+        const stored = localStorage.getItem(keyStorageName(id));
+        if (stored) apiKeys[id] = stored;
+      });
+      // Ancienne cle unique (epoque OpenAI seul) : elle devient la cle OpenAI.
+      const legacy = localStorage.getItem(storedKeyName);
+      if (legacy && !apiKeys.openai) {
+        apiKeys.openai = legacy;
+        localStorage.setItem(keyStorageName("openai"), legacy);
+      }
+    }
+
+    function currentKey() {
+      return apiKeys[providerId()] || "";
+    }
+
+    function requireKey() {
+      const key = currentKey();
+      if (!key) {
+        throw new Error(`Ajoute ta cle ${providerConfig().label} avec le bouton Ajouter / changer.`);
+      }
+      return key;
+    }
+
+    function populateModelSelect(models, keepValue = "") {
+      const select = document.querySelector("#apiModel");
+      const list = models && models.length ? models : providerConfig().fallbackModels;
+      const wanted = keepValue || modelCache[providerId() + ":selected"] || providerConfig().defaultModel;
+      select.innerHTML = list.map(model => `<option value="${model}">${model}</option>`).join("");
+      select.value = list.includes(wanted) ? wanted : list[0];
+    }
+
+    function syncProviderUi() {
+      const config = providerConfig();
+      document.querySelector("#keyLabel").textContent = t("Cle API") + " " + config.label;
+      document.querySelector("#keyModalTitle").textContent = t("Cle API") + " " + config.label;
+      document.querySelector("#apiKeyInput").placeholder = config.keyPlaceholder;
+      document.querySelector("#keyStatus").textContent = currentKey()
+        ? t("Cle stockee sur cet ordinateur")
+        : t("Aucune cle (") + config.keyPage + ")";
+      populateModelSelect(modelCache[providerId()]);
+    }
+
+    async function readJsonOrThrow(response, what) {
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`${what} (${response.status}) ${text.slice(0, 240)}`);
+      }
+      return response.json();
+    }
+
+    // La cle voyage en en-tete, jamais dans l'URL : les URLs finissent dans les
+    // journaux et l'historique du navigateur.
+    function providerHeaders(id, key) {
+      if (id === "anthropic") {
+        return {
+          "Content-Type": "application/json",
+          "x-api-key": key,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        };
+      }
+      if (id === "google") {
+        return { "Content-Type": "application/json", "x-goog-api-key": key };
+      }
+      return { "Content-Type": "application/json", "Authorization": `Bearer ${key}` };
+    }
+
+    async function fetchProviderModels() {
+      const id = providerId();
+      const key = requireKey();
+      const headers = providerHeaders(id, key);
+      if (id === "anthropic") {
+        const data = await readJsonOrThrow(
+          await fetch("https://api.anthropic.com/v1/models?limit=100", { headers }),
+          "Liste des modeles Anthropic impossible"
+        );
+        return (data.data || []).map(item => item.id);
+      }
+      if (id === "google") {
+        const data = await readJsonOrThrow(
+          await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", { headers }),
+          "Liste des modeles Gemini impossible"
+        );
+        return (data.models || [])
+          .filter(item => (item.supportedGenerationMethods || []).includes("generateContent"))
+          .map(item => String(item.name || "").replace(/^models\//, ""))
+          .filter(name => name.startsWith("gemini"));
+      }
+      const data = await readJsonOrThrow(
+        await fetch("https://api.openai.com/v1/models", { headers }),
+        "Liste des modeles OpenAI impossible"
+      );
+      return (data.data || [])
+        .map(item => item.id)
+        .filter(id => /^(gpt|o[1-9])/.test(id) && !/(audio|realtime|transcribe|tts|image|embedding|moderation)/.test(id))
+        .sort();
+    }
+
+    function extractProviderText(id, data) {
+      if (id === "anthropic") {
+        return (data.content || []).filter(part => part.type === "text").map(part => part.text).join("\n");
+      }
+      if (id === "google") {
+        const parts = data.candidates?.[0]?.content?.parts || [];
+        return parts.map(part => part.text || "").join("\n");
+      }
+      return extractOutputText(data);
+    }
+
+    // content: soit une chaine, soit {text, imageDataUrl} pour le mode vision.
+    async function callProvider({ system, content, maxTokens = 9000 }) {
+      const id = providerId();
+      const key = requireKey();
+      const model = document.querySelector("#apiModel").value || providerConfig().defaultModel;
+      const headers = providerHeaders(id, key);
+      const text = typeof content === "string" ? content : content.text;
+      const image = typeof content === "string" ? null : content.imageDataUrl;
+      const imageParts = image ? splitDataUrl(image) : null;
+
+      let url;
+      let body;
+      if (id === "anthropic") {
+        url = "https://api.anthropic.com/v1/messages";
+        const blocks = [];
+        if (imageParts) {
+          blocks.push({
+            type: "image",
+            source: { type: "base64", media_type: imageParts.mimeType, data: imageParts.data }
+          });
+        }
+        blocks.push({ type: "text", text });
+        body = { model, max_tokens: maxTokens, system, messages: [{ role: "user", content: blocks }] };
+      } else if (id === "google") {
+        url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+        const parts = [];
+        if (imageParts) {
+          parts.push({ inline_data: { mime_type: imageParts.mimeType, data: imageParts.data } });
+        }
+        parts.push({ text });
+        body = {
+          system_instruction: system ? { parts: [{ text: system }] } : undefined,
+          contents: [{ role: "user", parts }],
+          generationConfig: { maxOutputTokens: maxTokens }
+        };
+      } else {
+        url = "https://api.openai.com/v1/responses";
+        const userContent = imageParts
+          ? [{ type: "input_text", text }, { type: "input_image", image_url: image, detail: "low" }]
+          : text;
+        body = {
+          model,
+          input: [
+            ...(system ? [{ role: "system", content: system }] : []),
+            { role: "user", content: userContent }
+          ],
+          max_output_tokens: maxTokens
+        };
+      }
+
+      const data = await readJsonOrThrow(
+        await fetch(url, { method: "POST", headers, body: JSON.stringify(body) }),
+        `${providerConfig().label} a refuse la demande`
+      );
+      const output = extractProviderText(id, data).trim();
+      if (!output) throw new Error(`${providerConfig().label} n'a renvoye aucun texte.`);
+      return output;
+    }
+
+    function splitDataUrl(dataUrl) {
+      const match = /^data:([^;]+);base64,(.+)$/s.exec(dataUrl || "");
+      if (!match) throw new Error("Image illisible (format data URL attendu).");
+      return { mimeType: match[1], data: match[2] };
+    }
+
+    function parseJsonArrayFromModel(text) {
+      const cleaned = text
+        .replace(/^```json\s*/i, "")
+        .replace(/^```\s*/i, "")
+        .replace(/```\s*$/i, "")
+        .trim();
+      try {
+        return JSON.parse(cleaned);
+      } catch {
+        // Certains modeles encadrent le JSON d'une phrase : on recupere le tableau.
+        const start = cleaned.indexOf("[");
+        const end = cleaned.lastIndexOf("]");
+        if (start >= 0 && end > start) return JSON.parse(cleaned.slice(start, end + 1));
+        throw new Error("Reponse du modele illisible : ce n'est pas un tableau JSON.");
+      }
+    }
+
+    // H3 : plafond dur repris du skill muse-h3-director. Au-dela d'un chunk, le
+    // second chunk fait OOM (RTX 5090 32 Go, reproduit 4 fois). h3_director_build.py
+    // refuse de construire au-dela ; on previent ici pour ne pas perdre le voyage.
+    const H3_MAX_SECONDS = 15;
+    const H3_MAX_CHARACTERS = 9;
+    const H3_RETENTIONS = ["fully_preserved", "partially_preserved", "attribute_transfer", "weak_reference"];
+
+    const baseStyle = "Source-image-faithful LTX image-to-video prompt. Preserve the subject identity, composition, materials, colors, lighting, camera angle, and background while adding visible physical motion and clear environmental motion.";
+
+    const examples = [
+      ["01_visible_motion", "Use the source image as the first frame. Keep the same subject recognizable at all times. Add visible controlled motion: the subject shifts, turns, breathes, pulses, or sways, while nearby particles, bubbles, dust, water, fabric, or reflections move in a clear direction. One continuous shot, no cuts, no text, no scene change."],
+      ["02_environment_motion", "Use the source image as the first frame. Preserve the exact subject design, materials, colors, lighting, and background. Animate the environment clearly: bubbles rise, particles drift past the lens, water or air currents move, highlights slide across surfaces, and the subject reacts with restrained motion. One continuous shot, no cuts, no text, no scene change."],
+      ["03_clear_action", "Use the source image as the first frame. Keep the source composition and identity stable while the subject performs one simple visible action that fits the picture: a slow turn, lean, reach, pulse, fin/tentacle movement, or body sway. One continuous shot, no cuts, no text, no scene change."],
+      ["04_camera_push", "Use the source image as the first frame. The subject remains the same while the camera pushes in or drifts sideways, with visible natural movement in the body, clothing, surface, fluid, bubbles, particles, or surrounding atmosphere. One continuous shot, no cuts, no text, no scene change."],
+      ["05_settle", "Use the source image as the first frame. Preserve the subject and background, then animate a clear settling motion: the subject relaxes or sways back, bubbles continue rising, and small particles keep drifting through the scene. One continuous shot, no cuts, no text, no scene change."]
+    ];
+
+    const cameraStylePresets = [
+      { value: "none", label: "None / neutral", prompt: "Use neutral natural camera language with no added era filter or stylized processing." },
+      { value: "ina_16mm", label: "16 mm INA Documentary", prompt: "Use a 16 mm INA documentary look with archival French institutional film texture, restrained observational camera work, practical location sound, modest grain, natural color response, and sober public-broadcast documentary pacing." },
+      { value: "industrial_1970s", label: "1970s Industrial Research Film", prompt: "Use a 1970s industrial research film look with restrained tripod or dolly camera, practical lab lighting, muted color stock, documentary observation, and dry archival realism." },
+      { value: "tube_1977", label: "1977 Tube Video Broadcast", prompt: "Use a 1977 tube video broadcast look with analog studio color, soft phosphor glow, mild scanline texture, controlled zooms, and period television cadence." },
+      { value: "noir_1930s", label: "1930s Cinema Noir", prompt: "Use 1930s cinema noir language with stark black-and-white contrast, hard shadows, smoky depth, careful silhouettes, and slow suspenseful camera movement." },
+      { value: "bbc_biology_1980s", label: "1980s BBC Biology Documentary", prompt: "Use an 1980s BBC biology documentary style with patient macro observation, naturalistic narration energy, measured camera moves, soft film grain, and scientific clarity." },
+      { value: "vhs_1992", label: "VHS Camcorder 1992", prompt: "Use a 1992 VHS camcorder look with handheld domestic video texture, slight tape noise, auto-exposure breathing, modest color bleed, and casual observational framing." },
+      { value: "digital_2001", label: "Early Digital Video 2001", prompt: "Use early 2001 digital video aesthetics with crisp but compressed highlights, electronic color response, modest motion cadence, and practical handheld or tripod framing." },
+      { value: "kodachrome_travel", label: "Kodachrome Travel Film", prompt: "Use Kodachrome travel film color with rich reds and blues, bright daylight contrast, fine film grain, gentle handheld travel footage movement, and postcard clarity." },
+      { value: "soviet_archive", label: "Soviet Scientific Archive", prompt: "Use a Soviet scientific archive style with austere institutional framing, utilitarian lighting, muted film stock, locked-off observation, and archival documentary gravity." },
+      { value: "macro_nature", label: "Macro Nature Documentary", prompt: "Use macro nature documentary language with shallow depth of field, precise close focus, patient subject tracking, visible micro-movement, and tactile environmental detail." },
+      { value: "high_speed_lab", label: "High-Speed Lab Camera", prompt: "Use high-speed lab camera aesthetics with crisp slow-motion detail, neutral lighting, minimal camera movement, exact physical motion, and analytical clarity." },
+      { value: "cctv", label: "Surveillance CCTV", prompt: "Use surveillance CCTV style with fixed wide framing, compressed image texture, harsh practical lighting, timestamp-free security-camera observation, and detached realism." },
+      { value: "night_vision", label: "Night Vision Field Camera", prompt: "Use night vision field camera language with monochrome green sensitivity, infrared contrast, grain, fixed or cautious handheld framing, and nocturnal documentary tension." },
+      { value: "french_new_wave", label: "French New Wave 1960s", prompt: "Use French New Wave 1960s style with available light, nimble handheld camera, spontaneous reframing, naturalistic contrast, and elegant observational rhythm." },
+      { value: "giallo_1970s", label: "Giallo Horror 1970s", prompt: "Use 1970s giallo horror style with saturated color accents, theatrical shadows, uneasy slow zooms, stylized suspense, and tactile film grain." },
+      { value: "expressionist_silent", label: "Expressionist Silent Film", prompt: "Use expressionist silent film language with high-contrast monochrome, exaggerated shadows, theatrical composition, iris-like focus of attention, and dramatic gesture." },
+      { value: "training_tape_1984", label: "Corporate Training Tape 1984", prompt: "Use a 1984 corporate training tape look with flat instructional lighting, analog video softness, practical office-camera framing, calm demonstration pacing, and clean utilitarian composition." },
+      { value: "underwater_research", label: "Underwater Research Footage", prompt: "Use underwater research footage style with suspended particles, filtered blue-green light, drifting camera buoyancy, muffled ambience, and observational scientific framing." },
+      { value: "miniature_model", label: "Miniature Model Photography", prompt: "Use miniature model photography language with controlled scale lighting, careful focus, tactile practical effects, slow tabletop camera moves, and physical model realism." },
+      // --- annees 1940 ---
+      { value: "noir_1940s", label: "1940s Hollywood Film Noir", prompt: "Use 1940s Hollywood film noir language with nitrate black-and-white contrast, hard key light and deep unfilled shadow, venetian-blind and window-frame shadow patterns, cigarette smoke catching the beam, low camera height, and deliberate dolly moves on a studio floor." },
+      { value: "newsreel_1943", label: "1943 Wartime Newsreel", prompt: "Use a 1943 wartime newsreel look with 35 mm black-and-white stock, heavy grain and printed-in scratches, slightly unsteady hand-cranked cadence, blunt shoulder-height framing of real events, harsh available daylight, and the flat urgency of archival war footage." },
+      { value: "technicolor_1947", label: "1947 Three-Strip Technicolor", prompt: "Use 1947 three-strip Technicolor language with saturated primary reds and cyans, glowing skin tones, heavy studio key and fill leaving almost no shadow, painted-backdrop depth, static or slow crane framing, and lacquered studio-era gloss." },
+      // --- annees 1950 ---
+      { value: "neorealism_1950s", label: "1950s Italian Neorealism", prompt: "Use 1950s Italian neorealist language with grainy black-and-white stock, real streets and unlit interiors, natural light only, patient wide framing that lets people move through the frame, non-actor stillness, and an unsentimental observational distance." },
+      { value: "cinemascope_1955", label: "1955 CinemaScope Studio", prompt: "Use 1955 CinemaScope language with a very wide anamorphic frame, horizontal staging with actors spread across the width, gentle lateral tracking, rich saturated studio color, strong key lighting, and the composed stillness of early widescreen." },
+      { value: "kinescope_1956", label: "1956 Live TV Kinescope", prompt: "Use a 1956 live television kinescope look with soft blown-out black-and-white contrast, visible tube glow and scanline mush, a locked-off studio camera with occasional clumsy reframing, flat overhead studio light, and the slightly rushed feel of live broadcast." },
+      // --- annees 1960 ---
+      { value: "cinema_verite_1963", label: "1963 Cinema Verite", prompt: "Use 1963 cinema verite language with handheld 16 mm black-and-white, available light and visible grain, reactive reframing that chases the action a beat late, close conversational distance, and raw synchronous location sound." },
+      { value: "super8_1968", label: "1968 Super 8 Home Movie", prompt: "Use a 1968 Super 8 home movie look with warm faded Kodachrome color, soft corners and gate weave, occasional light leaks and dust, short handheld takes, casual amateur framing that recenters awkwardly, and silent-film cadence." },
+      { value: "space_program_1969", label: "1969 Space Program Film", prompt: "Use a 1969 space program documentation look with clean 16 mm color stock, clinical even lighting, locked-off engineering framing, calm procedural observation of hardware and technicians, mild grain, and institutional aerospace sobriety." },
+      // --- video 1980-2000 ---
+      { value: "betacam_news_1987", label: "1987 Betacam News", prompt: "Use a 1987 Betacam ENG news look with shoulder-mounted video, hard on-camera light punching a hole in the ambient dark, slightly smeared motion, electronic video color, quick reactive zooms, and blunt broadcast framing." },
+      { value: "music_video_1984", label: "1984 Music Video", prompt: "Use a 1984 music video look with high-contrast colored gels, hazy backlight beams, video sheen over film grain, restless camera moves and rapid reframing, theatrical performance staging, and glossy MTV-era artificiality." },
+      { value: "hi8_1995", label: "1995 Hi8 Camcorder", prompt: "Use a 1995 Hi8 camcorder look with mild tape noise and chroma smear, auto-focus hunting and auto-exposure breathing, handheld domestic framing, warm indoor color casts, and the ordinary intimacy of family video." },
+      { value: "minidv_1999", label: "1999 MiniDV Documentary", prompt: "Use a 1999 MiniDV documentary look with sharp but compressed digital video, interlaced motion, flat available-light exposure, handheld observational framing at conversational distance, and unglamorous late-nineties realism." },
+      { value: "webcam_2004", label: "2004 Early Webcam", prompt: "Use a 2004 early webcam look with low resolution and heavy compression blocking, low frame rate and stuttering motion, blown highlights from a nearby lamp, fixed desk-level framing looking slightly up, and cramped domestic background." },
+      // --- telephones ---
+      { value: "iphone_handheld", label: "iPhone Handheld", prompt: "Use a modern iPhone handheld look with a wide lens and deep focus keeping everything sharp, computational HDR that lifts every shadow and holds the highlights, slightly over-sharpened digital detail, very smooth stabilised walking motion, natural available light, and casual eye-level framing." },
+      { value: "iphone_selfie", label: "iPhone Selfie", prompt: "Use an iPhone front-camera selfie look with the arm's-length wide angle exaggerating the face, the subject looking straight into the lens, small handheld sway and reframing, flat even light on the face from the screen or the sky, background slightly blown out, and casual vertical-friendly framing." },
+      { value: "iphone_cinematic", label: "iPhone Cinematic Mode", prompt: "Use an iPhone cinematic-mode look with a shallow simulated depth of field, soft artificial edge falloff around the subject, focus racking between faces, warm computational color, gentle stabilised camera drift, and polished phone-video gloss." }
+    ];
+
+    const sizesByFormat = {
+      "16:9": ["1024x576", "1280x704", "1536x864", "1920x1088"],
+      "4:3": ["1024x768", "1280x960", "1536x1152"],
+      "3:2": ["1152x768", "1536x1024", "1920x1280"],
+      "1:1": ["768x768", "1024x1024", "1536x1536"],
+      "9:16": ["704x1280", "864x1536", "1088x1920"],
+      "2:3": ["768x1152", "1024x1536", "1280x1920"],
+      "21:9": ["1344x576", "1792x768", "2016x864", "2560x1088"]
+    };
+
+    /* ------------------------------------------------------------------ H3 */
+
+    function getModelFamily() {
+      return document.querySelector("#modelFamily")?.value || "ltx";
+    }
+
+    function isH3() {
+      return getModelFamily() === "h3";
+    }
+
+    function getH3Engine() {
+      return document.querySelector("#h3Engine")?.value || "director";
+    }
+
+    function isH3Director() {
+      return isH3() && getH3Engine() === "director";
+    }
+
+    function isH3T2v() {
+      return isH3() && getH3Engine() === "t2v";
+    }
+
+    function renderH3Refs() {
+      const host = document.querySelector("#h3Refs");
+      if (!host || host.children.length) return;
+      const retentionOptions = H3_RETENTIONS.map(value => `<option value="${value}">${value}</option>`).join("");
+      host.innerHTML = Array.from({ length: H3_MAX_CHARACTERS }, (unused, index) => `
+        <div class="h3-ref-row">
+          <div class="ref-num">${index + 1}</div>
+          <input class="h3-ref-file" data-index="${index}" placeholder="perso${index + 1}.png">
+          <input class="h3-ref-description" data-index="${index}" placeholder="the rugged man, tousled dirty-blond hair, wearing ...">
+          <select class="h3-ref-retention" data-index="${index}">${retentionOptions}</select>
+        </div>
+      `).join("");
+    }
+
+    function collectH3Characters() {
+      const rows = [...document.querySelectorAll(".h3-ref-row")];
+      const characters = [];
+      let lastFilled = -1;
+      rows.forEach((row, index) => {
+        const file = row.querySelector(".h3-ref-file").value.trim();
+        const description = row.querySelector(".h3-ref-description").value.trim();
+        if (file || description) lastFilled = index;
+      });
+      rows.slice(0, lastFilled + 1).forEach(row => {
+        characters.push({
+          file: row.querySelector(".h3-ref-file").value.trim(),
+          description: row.querySelector(".h3-ref-description").value.trim(),
+          retention: row.querySelector(".h3-ref-retention").value
+        });
+      });
+      return characters;
+    }
+
+    // Une ligne = un CUT : "secondes | texte | locuteurs". Le pipe est le seul
+    // separateur, donc pas de pipe dans le texte d'un CUT.
+    function parseCutLines(text) {
+      const cuts = [];
+      const errors = [];
+      (text || "").split("\n").forEach((rawLine, lineIndex) => {
+        const line = rawLine.trim();
+        if (!line || line.startsWith("#")) return;
+        const parts = line.split("|");
+        const seconds = Number(String(parts[0] || "").replace(",", ".").trim());
+        if (!Number.isFinite(seconds) || seconds <= 0) {
+          errors.push(`ligne ${lineIndex + 1}: duree illisible`);
+          return;
+        }
+        const body = (parts[1] || "").trim();
+        if (!body) {
+          errors.push(`ligne ${lineIndex + 1}: texte vide`);
+          return;
+        }
+        const speakers = (parts[2] || "")
+          .split(/[^0-9]+/)
+          .map(value => Number(value))
+          .filter(value => Number.isFinite(value) && value > 0);
+        cuts.push({ seconds: Math.round(seconds * 100) / 100, text: body, speakers });
+      });
+      return { cuts, errors };
+    }
+
+    function h3StyleLineFor(shot) {
+      const preset = shot ? getShotStyleConfig(shot) : getGlobalStyleConfig();
+      const manual = (document.querySelector("#h3StyleLine")?.value || "").replace(/\s+/g, " ").trim();
+      const presetText = preset && preset.value !== "none" ? preset.prompt : "";
+      return [presetText, manual].filter(Boolean).join(" ");
+    }
+
+    function h3SettingsBase() {
+      const projectDir = document.querySelector("#h3ProjectDir").value.trim();
+      return {
+        mode: "reference",
+        project_dir: projectDir || null,
+        refs_subdir: document.querySelector("#h3RefsSubdir").value.trim() || "refs",
+        link_mode: document.querySelector("#h3LinkMode").value,
+        aspect_ratio: document.querySelector("#h3AspectRatio").value,
+        megapixels: Number(document.querySelector("#h3Megapixels").value) || 0.9,
+        steps: Math.max(1, Number(document.querySelector("#h3Steps").value) || 20),
+        sampler_name: document.querySelector("#h3Sampler").value,
+        scheduler: document.querySelector("#h3Scheduler").value,
+        ref_image_size: document.querySelector("#h3RefImageSize").value
+      };
+    }
+
+    function h3OutputBase() {
+      const explicit = document.querySelector("#h3OutputName").value.trim();
+      if (explicit) return explicit.replace(/[\\/]+$/, "");
+      const projectDir = document.querySelector("#h3ProjectDir").value.trim();
+      const projectName = projectDir.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
+      return `Muse/Video/${projectName || "h3_queue"}`;
+    }
+
+    function h3SceneName(shot, index) {
+      const raw = shot.querySelector(".shot-name").value.trim();
+      const cleaned = raw.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+      return cleaned || `scene_${String(index + 1).padStart(2, "0")}`;
+    }
+
+    function collectH3Briefs() {
+      const characters = collectH3Characters();
+      const settingsBase = h3SettingsBase();
+      const outputBase = h3OutputBase();
+      const backgroundFile = document.querySelector("#h3BackgroundFile").value.trim();
+      const backgroundDescription = document.querySelector("#h3BackgroundDescription").value.trim();
+      const background = backgroundFile || backgroundDescription
+        ? { file: backgroundFile, description: backgroundDescription, retention: "fully_preserved" }
+        : null;
+      const soundscape = document.querySelector("#h3Soundscape").value.trim();
+      const music = document.querySelector("#h3Music").value.trim();
+      const dialogueLanguage = document.querySelector("#h3DialogueLanguage").value.trim() || "English";
+
+      return getShotElements().map((shot, index) => {
+        const { cuts } = parseCutLines(shot.querySelector(".shot-cuts")?.value);
+        if (!cuts.length) return null;
+        const name = h3SceneName(shot, index);
+        const seedValue = Number(shot.querySelector(".shot-seed").value.trim());
+        return {
+          name,
+          settings: {
+            ...settingsBase,
+            seed: Number.isFinite(seedValue) && seedValue > 0 ? Math.floor(seedValue) : 100,
+            output_name: `${outputBase}_${String(index + 1).padStart(2, "0")}_${name}`
+          },
+          style_line: h3StyleLineFor(shot),
+          dialogue_language: dialogueLanguage,
+          overall_soundscape: soundscape,
+          non_diegetic_music: music,
+          characters,
+          background,
+          cuts
+        };
+      }).filter(Boolean);
+    }
+
+    function h3SceneIssues(brief) {
+      const issues = [];
+      const total = brief.cuts.reduce((sum, cut) => sum + cut.seconds, 0);
+      if (total > H3_MAX_SECONDS) {
+        issues.push(`${total.toFixed(1)}s > ${H3_MAX_SECONDS}s : decoupe en deux scenes (_a / _b), sinon OOM au chunk 2`);
+      }
+      const declared = brief.characters.length;
+      brief.cuts.forEach((cut, index) => {
+        [...cut.text.matchAll(/<Subject (\d+)>/g)].forEach(match => {
+          if (Number(match[1]) > declared) {
+            issues.push(`CUT ${index + 1} cite <Subject ${match[1]}> mais ${declared} personnage(s) declare(s)`);
+          }
+        });
+        if (cut.text.includes('"') && !cut.speakers.length) {
+          issues.push(`CUT ${index + 1} a du dialogue sans locuteur : la voix ne sera attribuee a personne`);
+        }
+        cut.speakers.forEach(speaker => {
+          if (speaker > declared) issues.push(`CUT ${index + 1}: locuteur ${speaker} hors des ${declared} personnages`);
+        });
+      });
+      const missingBefore = brief.characters.findIndex(character => !character.file);
+      if (missingBefore >= 0 && brief.characters.slice(missingBefore + 1).some(character => character.file)) {
+        issues.push(`Ref ${missingBefore + 1} sans image alors qu'une Ref plus loin en a une : la numerotation des Subject glisse`);
+      }
+      return [...new Set(issues)];
+    }
+
+    function updateCutsInfo(shot) {
+      const info = shot.querySelector(".cuts-info");
+      const field = shot.querySelector(".shot-cuts");
+      if (!info || !field) return;
+      const { cuts, errors } = parseCutLines(field.value);
+      if (!cuts.length && !errors.length) {
+        info.textContent = "";
+        info.className = "cuts-info";
+        return;
+      }
+      const total = cuts.reduce((sum, cut) => sum + cut.seconds, 0);
+      const over = total > H3_MAX_SECONDS;
+      info.textContent = t([
+        `${cuts.length} CUT, ${total.toFixed(1)}s`,
+        over ? `au-dessus du plafond de ${H3_MAX_SECONDS}s` : "",
+        errors.join(", ")
+      ].filter(Boolean).join(" — "));
+      info.className = over || errors.length ? "cuts-info warn" : "cuts-info";
+    }
+
+    function updateAllCutsInfo() {
+      getShotElements().forEach(updateCutsInfo);
+    }
+
+    function buildH3Command() {
+      const folder = document.querySelector("#folder").value.trim();
+      const briefsFile = document.querySelector("#promptFile").value.trim() || "h3_custom_queue.json";
+      const template = document.querySelector("#h3TemplatePath").value.trim() || "h3_template_scout_v1.json";
+      const outDir = document.querySelector("#h3OutDir").value.trim() || "h3_workflows";
+      const server = document.querySelector("#server").value.trim() || "http://127.0.0.1:8188";
+      const queueMode = document.querySelector("#h3OutputMode").value === "queue";
+      const briefs = collectH3Briefs();
+
+      if (!folder || !briefs.length) {
+        setStatus("#status", "Remplis au moins une scene avec des CUTs.", true);
+        return "";
+      }
+
+      const issues = briefs.flatMap(brief => h3SceneIssues(brief).map(issue => `${brief.name}: ${issue}`));
+      const refs = collectH3Characters();
+      const withImages = refs.filter(character => character.file).length;
+      const totalSeconds = briefs.reduce(
+        (sum, brief) => sum + brief.cuts.reduce((inner, cut) => inner + cut.seconds, 0),
+        0
+      );
+      const summary = `${briefs.length} scene(s) H3, ${totalSeconds.toFixed(1)}s au total. Refs: ${withImages}/${refs.length} avec image. `
+        + (queueMode ? "Sortie: file ComfyUI (API)." : `Sortie: fichiers .json dans ${outDir}.`);
+      setStatus("#status", issues.length ? `${summary} A corriger — ${issues.join(" | ")}` : summary, issues.length > 0);
+
+      const args = [
+        `--briefs ${psSingleQuoted(briefsFile)}`,
+        `--template ${psSingleQuoted(template)}`,
+        queueMode ? `--queue --server ${psSingleQuoted(server)}` : `--out-dir ${psSingleQuoted(outDir)}`,
+        document.querySelector("#h3Preview").checked ? "--preview" : ""
+      ].filter(Boolean).join(" ");
+
+      return [
+        `cd ${psSingleQuoted(folder)}`,
+        `$briefs = @'`,
+        JSON.stringify(briefs, null, 2),
+        `'@`,
+        `Set-Content -LiteralPath ${psSingleQuoted(briefsFile)} -Value $briefs -Encoding UTF8`,
+        `${pythonCommand()} .\\queue_h3_multishot.py ${args}`
+      ].join("\n");
+    }
+
+    // H3 T2V natif : un prompt par scene, exactement comme LTX. Le meme
+    // queue_ltx_multishot.py fait le travail — la duree passe par le widget
+    // duration (PrimitiveFloat), la taille par le ResolutionSelector.
+    function buildH3T2vCommand() {
+      const folder = document.querySelector("#folder").value.trim();
+      const promptFile = document.querySelector("#promptFile").value.trim() || "h3_t2v_queue.json";
+      const workflow = document.querySelector("#h3T2vWorkflow").value.trim() || "h3_t2v_api.json";
+      const server = document.querySelector("#server").value.trim() || "http://127.0.0.1:8188";
+      const promptRows = collectRows();
+
+      if (!folder || !promptRows.length) {
+        setStatus("#status", "Remplis au moins un prompt.", true);
+        return "";
+      }
+
+      const duration = h3T2vDuration();
+      const shots = h3T2vShotCount();
+      const aspectRatio = document.querySelector("#h3AspectRatio").value;
+      const megapixels = Number(document.querySelector("#h3Megapixels").value) || 0.9;
+      const over = duration > H3_MAX_SECONDS;
+      // On compte les plans reellement ecrits dans les prompts : c'est le seul
+      // moyen de voir qu'un modele a ignore la consigne multishot.
+      const withCuts = promptRows.filter(row => (row.positive.match(/\[Shot \d+\]/g) || []).length >= shots).length;
+      const multishotNote = shots > 1
+        ? ` Multishot: ${shots} plans par scene, ${withCuts}/${promptRows.length} prompt(s) contiennent bien les coupes.`
+        : "";
+      setStatus(
+        "#status",
+        `${promptRows.length} prompt(s) H3 T2V, ${duration}s chacun, ${aspectRatio}, ${megapixels} MP. Workflow: ${workflow}.`
+          + multishotNote
+          + (over ? ` Au-dessus du plafond de ${H3_MAX_SECONDS}s.` : ""),
+        over || (shots > 1 && withCuts < promptRows.length)
+      );
+
+      const args = [
+        `--server ${psSingleQuoted(server)}`,
+        `--workflow ${psSingleQuoted(workflow)}`,
+        `--prompts ${psSingleQuoted(promptFile)}`,
+        `--duration-seconds ${duration}`,
+        `--aspect-ratio ${psSingleQuoted(aspectRatio)}`,
+        `--megapixels ${megapixels}`
+      ].join(" ");
+
+      return [
+        `cd ${psSingleQuoted(folder)}`,
+        `$prompts = @'`,
+        JSON.stringify(promptRows, null, 2),
+        `'@`,
+        `Set-Content -LiteralPath ${psSingleQuoted(promptFile)} -Value $prompts -Encoding UTF8`,
+        `${pythonCommand()} .\\queue_ltx_multishot.py ${args}`
+      ].join("\n");
+    }
+
+    function updateH3Hint() {
+      const hint = document.querySelector("#h3Hint");
+      if (!hint) return;
+      if (isH3T2v()) {
+        hint.textContent = `H3 T2V natif : un prompt par scene, pas de refs ni de CUTs. Chaque scene est un job dans la file ComfyUI, ${H3_MAX_SECONDS}s maximum.`;
+        hint.className = "h3-hint";
+        return;
+      }
+      const characters = collectH3Characters();
+      const missing = characters.filter(character => !character.file).length;
+      const messages = [
+        `${characters.length} personnage(s) declare(s), ${characters.length - missing} avec image.`,
+        missing ? `${missing} slot(s) sans fichier : glisse les images dans les slots Ref de l'UI Director avant de RUN, dans cet ordre.` : "",
+        `Un rendu H3 = ${H3_MAX_SECONDS}s maximum, une scene = un workflow.`
+      ].filter(Boolean);
+      hint.textContent = t(messages.join(" "));
+      hint.className = missing ? "h3-hint warn" : "h3-hint";
+    }
+
+    const QUEUE_FILE_DEFAULTS = {
+      ltx: "ltx_custom_queue.json",
+      director: "h3_custom_queue.json",
+      t2v: "h3_t2v_queue.json"
+    };
+
+    function syncModelUi() {
+      const h3 = isH3();
+      const engine = getH3Engine();
+      document.body.classList.toggle("mode-h3", h3);
+      document.body.classList.toggle("engine-director", h3 && engine === "director");
+      document.body.classList.toggle("engine-t2v", h3 && engine === "t2v");
+
+      // Le nom du fichier de file suit le mode tant que David ne l'a pas
+      // personnalise : on ne remplace jamais une valeur qu'il a saisie.
+      const promptFile = document.querySelector("#promptFile");
+      const target = h3 ? QUEUE_FILE_DEFAULTS[engine] : QUEUE_FILE_DEFAULTS.ltx;
+      const known = Object.values(QUEUE_FILE_DEFAULTS);
+      if (known.includes(promptFile.value.trim())) promptFile.value = target;
+
+      // Seeds : LTX prefille de gros seeds par shot, H3 tourne en seed 100 fixe
+      // (defaut du skill — varier le seed n'a d'interet qu'entre deux variantes
+      // du meme decoupage). On ne remplace qu'une valeur restee au defaut.
+      getShotElements().forEach((shot, index) => {
+        const field = shot.querySelector(".shot-seed");
+        const ltxDefault = 1125119286042028 + index;
+        if (h3 && Number(field.value) === ltxDefault) field.value = 100;
+        if (!h3 && Number(field.value) === 100) field.value = ltxDefault;
+      });
+
+      if (h3) {
+        renderH3Refs();
+        updateH3Hint();
+        updateAllCutsInfo();
+        document.querySelector("#command").value = buildCommand();
+      } else {
+        syncLtxVersionUi();
+      }
+    }
+
+    function styleOptionsHtml(includeGlobal = false) {
+      const global = includeGlobal ? '<option value="global">Global</option>' : '';
+      // Custom juste apres None / neutral : ce sont les deux entrees utilisees
+      // en permanence, les presets d'epoque viennent ensuite.
+      const [neutral, ...rest] = cameraStylePresets;
+      const option = item => `<option value="${item.value}">${item.label}</option>`;
+      return `${global}${option(neutral)}<option value="custom">Custom...</option>${rest.map(option).join("")}`;
+    }
+
+    function populateStyleControls() {
+      const globalSelect = document.querySelector("#globalStylePreset");
+      if (globalSelect) {
+        globalSelect.innerHTML = styleOptionsHtml(false);
+        globalSelect.value = "none";
+      }
+      template.content.querySelectorAll(".shot-style").forEach(select => {
+        select.innerHTML = styleOptionsHtml(true);
+        select.value = "global";
+      });
+      document.querySelectorAll(".shot-style").forEach(select => {
+        const current = select.value || "global";
+        select.innerHTML = styleOptionsHtml(true);
+        select.value = [...select.options].some(option => option.value === current) ? current : "global";
+      });
+      updateStyleCustomVisibility();
+    }
+
+    function getStylePreset(value) {
+      return cameraStylePresets.find(item => item.value === value) || cameraStylePresets[0];
+    }
+
+    function cleanCustomStyle(value) {
+      return (value || "").replace(/\s+/g, " ").trim();
+    }
+
+    function styleConfigFromValue(value, customText = "") {
+      if (value === "custom") {
+        const prompt = cleanCustomStyle(customText);
+        return prompt ? { value: "custom", label: "Custom", prompt } : getStylePreset("none");
+      }
+      return getStylePreset(value || "none");
+    }
+
+    function getGlobalStyleConfig() {
+      return styleConfigFromValue(
+        document.querySelector("#globalStylePreset")?.value || "none",
+        document.querySelector("#globalCustomStyle")?.value || ""
+      );
+    }
+
+    function getShotStyleConfig(shot) {
+      const override = shot.querySelector(".shot-style")?.value || "global";
+      if (override === "global") return getGlobalStyleConfig();
+      return styleConfigFromValue(override, shot.querySelector(".shot-custom-style")?.value || "");
+    }
+
+    function updateStyleCustomVisibility(root = document) {
+      const globalCustom = document.querySelector("#globalCustomStyle");
+      if (globalCustom) {
+        globalCustom.classList.toggle("active", document.querySelector("#globalStylePreset")?.value === "custom");
+      }
+      const shotRoots = root.matches?.(".shot") ? [root] : [...(root.querySelectorAll?.(".shot") || [])];
+      shotRoots.forEach(shot => {
+        const custom = shot.querySelector(".shot-custom-style");
+        const select = shot.querySelector(".shot-style");
+        if (custom && select) custom.classList.toggle("active", select.value === "custom");
+      });
+    }
+    function applyStyleToPrompt(positive, styleConfig) {
+      const preset = typeof styleConfig === "string" ? styleConfigFromValue(styleConfig) : styleConfig;
+      if (!positive || !preset || preset.value === "none") return positive;
+      return `Camera/style preset: ${preset.label}. ${preset.prompt}\n\n${positive}`;
+    }
+
+    function buildGenerationStyleNote() {
+      const preset = getGlobalStyleConfig();
+      if (!preset || preset.value === "none") return "";
+      return `Camera / style preset to integrate into every positive prompt: ${preset.label}. ${preset.prompt}\n\n`;
+    }
+    const shots = document.querySelector("#shots");
+    const template = document.querySelector("#shotTemplate");
+
+    function setStatus(id, text, warn = false) {
+      const el = document.querySelector(id);
+      // Un seul point de passage pour la traduction : les 38 appels a
+      // setStatus n'ont pas a s'en soucier.
+      el.textContent = t(text);
+      el.className = warn ? "status warn" : "status";
+    }
+
+    function getAskHistory() {
+      try {
+        return JSON.parse(localStorage.getItem(askHistoryKey) || "[]");
+      } catch {
+        return [];
+      }
+    }
+
+    function saveAskToHistory(text, mode, count) {
+      const value = text.trim();
+      if (!value) return;
+      const history = getAskHistory().filter(item => item.text !== value);
+      history.unshift({
+        text: value,
+        mode,
+        count,
+        date: new Date().toLocaleString()
+      });
+      localStorage.setItem(askHistoryKey, JSON.stringify(history.slice(0, 30)));
+    }
+
+    function renderAskHistory() {
+      const list = document.querySelector("#historyList");
+      const history = getAskHistory();
+      if (!history.length) {
+        list.innerHTML = `<div class="history-text">Aucune demande pour le moment.</div>`;
+        return;
+      }
+      list.innerHTML = history.map((item, index) => `
+        <div class="history-item">
+          <strong>${item.date || ""} Â· ${item.count || "?"} shot(s) Â· ${item.mode || ""}</strong>
+          <div class="history-text">${item.text.replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]))}</div>
+          <button type="button" data-history-index="${index}">Recharger</button>
+        </div>
+      `).join("");
+    }
+
+    function getShotElements() {
+      return [...document.querySelectorAll(".shot")];
+    }
+
+    function cutsToText(cuts) {
+      return (cuts || []).map(cut => {
+        const seconds = Number(cut.seconds) || 0;
+        const text = String(cut.text || "").replace(/\|/g, "/").replace(/\s+/g, " ").trim();
+        const speakers = (cut.speakers || []).filter(value => Number(value) > 0).join(",");
+        return [seconds, text, speakers].filter((value, index) => index < 2 || value).join(" | ");
+      }).join("\n");
+    }
+
+    function fillShot(shot, data, index) {
+      shot.querySelector(".shot-name").value = data?.name || `shot_${String(index + 1).padStart(2, "0")}`;
+      shot.querySelector(".shot-seed").value = data?.seed || (1125119286042028 + index);
+      shot.querySelector(".shot-prompt").value = data?.positive || "";
+      if (shot.querySelector(".shot-style")) shot.querySelector(".shot-style").value = data?.style || "global";
+      if (shot.querySelector(".shot-custom-style")) shot.querySelector(".shot-custom-style").value = data?.custom_style || data?.style_prompt || "";
+      updateStyleCustomVisibility(shot);
+      const cutsField = shot.querySelector(".shot-cuts");
+      if (cutsField) {
+        // On ne touche aux CUTs que si on en recoit, ou si on efface
+        // explicitement : generer des prompts LTX ne doit pas vider une
+        // timeline H3 deja ecrite.
+        if (Array.isArray(data?.cuts)) {
+          cutsField.value = cutsToText(data.cuts);
+        } else if (typeof data?.cuts_text === "string") {
+          cutsField.value = data.cuts_text;
+        } else if (data?.clearCuts) {
+          cutsField.value = "";
+        }
+        updateCutsInfo(shot);
+      }
+      shot.querySelector(".shot-image").value = data?.image || "";
+      shot.querySelector(".shot-image-path").value = data?.image_path || "";
+      shot.dataset.comfyImage = data?.image || "";
+      shot.dataset.imagePath = data?.image_path || "";
+      shot.querySelector(".image-status").textContent = data?.image ? `Image: ${data.image}` : "";
+      if (!data?.image) {
+        shot.querySelector(".thumb").innerHTML = "No image";
+      }
+    }
+
+    populateStyleControls();
+
+    for (let i = 0; i < 20; i++) {
+      const node = template.content.cloneNode(true);
+      const shot = node.querySelector(".shot");
+      shot.querySelector(".num").textContent = String(i + 1).padStart(2, "0");
+      fillShot(shot, { name: `shot_${String(i + 1).padStart(2, "0")}`, seed: 1125119286042028 + i, positive: "" }, i);
+      shots.appendChild(node);
+    }
+
+    // Interpreteur Python fourni par le serveur (voir /api/env). Sur une
+    // machine ou "python" n'est pas dans le PATH, la commande generee
+    // doit designer l'interpreteur exact qui fait tourner l'app.
+    let pythonExe = "";
+
+    function pythonCommand() {
+      return pythonExe ? `& ${psSingleQuoted(pythonExe)}` : "python";
+    }
+
+    function psSingleQuoted(value) {
+      return `'${value.replaceAll("'", "''")}'`;
+    }
+
+    function refreshSizeOptions(resetToPreset = false) {
+      const format = document.querySelector("#formatPreset")?.value || "16:9";
+      const options = sizesByFormat[format] || sizesByFormat["16:9"];
+      const sizePreset = document.querySelector("#sizePreset");
+      const videoSize = document.querySelector("#videoSize");
+      if (!sizePreset || !videoSize) return;
+      const previous = videoSize.value.trim();
+      sizePreset.innerHTML = options.map(size => `<option value="${size}">${size}</option>`).join("");
+      if (!resetToPreset && previous && options.includes(previous)) {
+        sizePreset.value = previous;
+        videoSize.value = previous;
+        return;
+      }
+      sizePreset.value = options[0];
+      videoSize.value = options[0];
+    }
+    function parseOverrideNumber(selector) {
+      const value = document.querySelector(selector).value.trim();
+      if (!value) return "";
+      const number = Number(value);
+      return Number.isFinite(number) && number > 0 ? String(Math.floor(number)) : "";
+    }
+
+    function parseSizeOverride() {
+      const value = document.querySelector("#videoSize").value.trim();
+      if (!value) return "";
+      const match = value.match(/^(\d+)\s*[xX*]\s*(\d+)$/);
+      if (!match) return "";
+      return `${Number(match[1])}x${Number(match[2])}`;
+    }
+
+    function getLtxVersion() {
+      return document.querySelector("#ltxVersion")?.value || "2.5";
+    }
+
+    function isLtx25() {
+      return getLtxVersion() === "2.5";
+    }
+
+    function parseSizeParts(size) {
+      const match = (size || "").match(/^(\d+)x(\d+)$/);
+      return match ? { width: Number(match[1]), height: Number(match[2]) } : null;
+    }
+
+    function validateLtx25Settings(frameCount, size) {
+      if (!isLtx25()) return "";
+      if (frameCount && (Number(frameCount) - 1) % 8 !== 0) {
+        return "LTX 2.5 demande un frame count de type 8n+1: 97, 121, 153, 193 ou 241.";
+      }
+      const parts = parseSizeParts(size);
+      if (parts && (parts.width % 32 !== 0 || parts.height % 32 !== 0)) {
+        return "LTX 2.5 demande une taille divisible par 32, par exemple 1280x704, 1536x864 ou 704x1280.";
+      }
+      return "";
+    }
+
+    function resolveWorkflow() {
+      const preset = document.querySelector("#workflowPreset").value;
+      if (preset === "load") return document.querySelector("#loadWorkflowPath").value.trim();
+      if (preset === "ltx25_t2v") return "ltx25_t2v_api.json";
+      if (preset === "ltx25_i2v") return "ltx25_i2v_api.json";
+      if (preset === "ltx25_flf2v") return "ltx25_flf2v_api.json";
+      if (preset === "t2v") return "ltx2_t2v.json";
+      if (preset === "fast") return "ltx19b_i2v_fast_api.json";
+      if (preset === "video_i2v_hq") return "ltx19b_i2v_quality_upscale_api.json";
+      return document.querySelector("#loadWorkflowPath").value.trim();
+    }
+    function presetLtxVersion(preset) {
+      if (["ltx25_t2v", "ltx25_i2v", "ltx25_flf2v"].includes(preset)) return "2.5";
+      if (["t2v", "fast", "video_i2v_hq"].includes(preset)) return "2.3";
+      return document.querySelector("#ltxVersion")?.value || "2.5";
+    }
+
+    function syncVersionFromWorkflowPreset() {
+      const preset = document.querySelector("#workflowPreset")?.value || "ltx25_t2v";
+      const version = document.querySelector("#ltxVersion");
+      if (version && preset !== "load") version.value = presetLtxVersion(preset);
+    }
+    function syncLoadWorkflowVisibility() {
+      const preset = document.querySelector("#workflowPreset").value;
+      document.querySelector("#loadWorkflowRow").classList.toggle("active", preset === "load");
+    }
+
+    function collectRows() {
+      const negative = document.querySelector("#negative").value.trim();
+      return getShotElements().map((shot, index) => {
+        const rawPositive = shot.querySelector(".shot-prompt").value.trim();
+        if (!rawPositive) return null;
+        const positive = applyStyleToPrompt(rawPositive, getShotStyleConfig(shot));
+        const statusText = shot.querySelector(".image-status").textContent || "";
+        const statusImage = statusText.match(/(?:Image uploadee:|Image:)\s*(.+)$/)?.[1]?.trim() || "";
+        const image = shot.querySelector(".shot-image").value.trim() || shot.dataset.comfyImage || statusImage;
+        return {
+          name: shot.querySelector(".shot-name").value.trim() || `shot_${String(index + 1).padStart(2, "0")}`,
+          seed: Number(shot.querySelector(".shot-seed").value.trim()) || Date.now() + index,
+          upscale_seed: index,
+          image,
+          image_path: shot.querySelector(".shot-image-path").value.trim() || shot.dataset.imagePath || "",
+          image_filename: shot.dataset.imageFilename || "",
+          positive,
+          negative
+        };
+      }).filter(Boolean);
+    }
+
+    function hasAnyLinkedImage() {
+      return getShotElements().some(shot => {
+        return !!(
+          shot.querySelector(".shot-image").value.trim() ||
+          shot.querySelector(".shot-image-path").value.trim() ||
+          shot.dataset.comfyImage ||
+          shot.dataset.imagePath ||
+          shot.querySelector(".shot-file").files?.[0]
+        );
+      });
+    }
+
+    function buildCommand() {
+      if (isH3Director()) return buildH3Command();
+      if (isH3T2v()) return buildH3T2vCommand();
+      const folder = document.querySelector("#folder").value.trim();
+      const workflow = resolveWorkflow();
+      const promptFile = document.querySelector("#promptFile").value.trim() || "ltx_custom_queue.json";
+      const server = document.querySelector("#server").value.trim() || "http://127.0.0.1:8188";
+      const promptRows = collectRows();
+      const frameCount = parseOverrideNumber("#frameCount");
+      const size = parseSizeOverride();
+      const noiseSeed = parseOverrideNumber("#noiseSeed");
+
+      if (!folder || !workflow || promptRows.length === 0) {
+        setStatus("#status", "Remplis au moins un prompt.", true);
+        return "";
+      }
+
+      const ltx25Error = validateLtx25Settings(frameCount, size);
+      if (ltx25Error) {
+        setStatus("#status", ltx25Error, true);
+        return "";
+      }
+
+      const imageCount = promptRows.filter(row => row.image || row.image_path).length;
+      const workflowPresetValue = document.querySelector("#workflowPreset").value;
+      const descriptionCount = promptRows.filter(row => row.positive.includes("Image description:")).length;
+      const workflowLabel = workflowPresetValue === "load" ? "Workflow charge" : "Preset";
+      const overrides = [
+        frameCount ? `frames ${frameCount}` : "",
+        size ? `size ${size}` : "",
+        noiseSeed ? `seed ${noiseSeed}+` : ""
+      ].filter(Boolean).join(", ") || "preset";
+      const versionHint = isLtx25() ? "LTX 2.5: prompts en paragraphe continu. " : "";
+      setStatus("#status", `${versionHint}${promptRows.length} prompt(s) prets. Images liees: ${imageCount}/${promptRows.length}. Descriptions: ${descriptionCount}/${promptRows.length}. ${workflowLabel}: ${workflow}. Reglages: ${overrides}`, false);
+      const json = JSON.stringify(promptRows, null, 2);
+      const overrideArgs = [
+        frameCount ? `--frame-count ${frameCount}` : "",
+        size ? `--size ${psSingleQuoted(size)}` : "",
+        noiseSeed ? `--noise-seed ${noiseSeed}` : ""
+      ].filter(Boolean).join(" ");
+      return [
+        `cd ${psSingleQuoted(folder)}`,
+        `$prompts = @'`,
+        json,
+        `'@`,
+        `Set-Content -LiteralPath ${psSingleQuoted(promptFile)} -Value $prompts -Encoding UTF8`,
+        `${pythonCommand()} .\\queue_ltx_multishot.py --server ${psSingleQuoted(server)} --workflow ${psSingleQuoted(workflow)} --prompts ${psSingleQuoted(promptFile)}${overrideArgs ? ` ${overrideArgs}` : ""}`
+      ].join("\n");
+    }
+
+    // Regles de contenu H3 reprises du skill muse-h3-director : tags <Subject N>
+    // litteraux (le compilateur ne fait aucune resolution semantique), lieu ancre
+    // dans CHAQUE cut (sinon H3 reprend le decor de la planche de reference du
+    // personnage), et 15 s maximum par scene.
+    function h3ContentRules() {
+      const characters = collectH3Characters();
+      const roster = characters.length
+        ? characters.map((character, index) => `<Subject ${index + 1}> = ${character.description || "(a decrire)"}`).join("; ")
+        : "aucun personnage declare : decris les gens de facon generique, sans tag <Subject N>";
+      return `Personnages declares: ${roster}. `
+        + `Ecris les tags <Subject N> en toutes lettres dans le texte des CUTs, jamais "the man" tout seul. `
+        + `Ancre le lieu dans CHAQUE cut, meme en gros plan. `
+        + `Total d'une scene: ${H3_MAX_SECONDS}s maximum, cuts de 2 a 6s. `
+        + `Dialogue entre guillemets droits dans le texte, et le ou les numeros de Subject qui parlent dans speakers.`;
+    }
+
+    function h3T2vShotCount() {
+      return Math.max(1, Math.min(6, Number(document.querySelector("#h3T2vShots")?.value) || 1));
+    }
+
+    function h3T2vDuration() {
+      return Number(document.querySelector("#h3T2vDuration")?.value) || 5;
+    }
+
+    // Multishot H3 : le modele ne coupe que si on lui impose des segments
+    // etiquetes et datés. Une consigne du genre "5 plans" dans la description
+    // libre ne suffit pas — il rend un plan continu. On reprend ici le format
+    // que le noeud Director compile ([Shot n] + horodatage), qui tourne deja.
+    function h3MultishotRule(shots, duration) {
+      if (shots < 2) {
+        return `Une seule scene continue de ${duration}s, sans coupe, sans label de plan, sans timestamp.`;
+      }
+      const slice = (duration / shots).toFixed(1);
+      return `IMPOSE ${shots} plans distincts A L'INTERIEUR de chaque positive, separes par des coupes franches. `
+        + `Ecris-les en toutes lettres sous la forme "[Shot 1] ...", puis "[Shot 2] At 00:0X.X, ..." et ainsi de suite, `
+        + `l'horodatage etant le debut du plan compte depuis 0. Chaque plan dure environ ${slice}s pour un total de ${duration}s. `
+        + `Change de cadrage, d'angle ou de valeur de plan a chaque coupe (par exemple large, puis serre, puis contre-champ) `
+        + `en gardant le meme lieu, les memes personnages et la meme lumiere. `
+        + `Ne fais pas un mouvement de camera continu : ce sont de vraies coupes de montage.`;
+    }
+
+    function h3T2vLocalRequest(ask, count, styleNote) {
+      const shots = h3T2vShotCount();
+      return `Remplis mon Workflows Q-builder en mode MiniMax H3 T2V avec ${count} generations text-to-video. Scene: ${ask}\n\n${styleNote}`
+        + `Retourne uniquement un JSON array avec les champs name, seed, positive. `
+        + `Chaque positive est en anglais, au present : sujet + lieu + action + camera + lumiere + son. `
+        + `${h3MultishotRule(shots, h3T2vDuration())} `
+        + `Pas de bullet points.`;
+    }
+
+    function h3DirectorLocalRequest(ask, count, styleNote) {
+      return `Remplis mon Workflows Q-builder en mode MiniMax H3 Director avec ${count} scenes. Scene: ${ask}\n\n${styleNote}`
+        + `Retourne uniquement un JSON array. Chaque element: {"name": "...", "seed": 100, "cuts": [{"seconds": 3.5, "text": "...", "speakers": [1]}]}. `
+        + `Le texte des cuts est en anglais. ${h3ContentRules()}`;
+    }
+
+    function localCodexRequest() {
+      const ask = document.querySelector("#askText").value.trim();
+      const count = Math.max(1, Math.min(20, Number(document.querySelector("#shotCount").value) || 5));
+      const styleNote = buildGenerationStyleNote();
+      if (isH3T2v()) return h3T2vLocalRequest(ask, count, styleNote);
+      if (isH3Director()) return h3DirectorLocalRequest(ask, count, styleNote);
+      if (isLtx25()) {
+        if (!hasAnyLinkedImage()) {
+          return `Remplis mon Workflows Q-builder en mode LTX 2.5 avec ${count} generations text-to-video. Scene: ${ask}\n\n${styleNote}Retourne uniquement un JSON array avec les champs name, seed, positive. Chaque positive doit etre un seul paragraphe fluide au present, sans timestamps, sans bullet points, sans libelles Shot 1, sans crochets de timing. Integre sujet, lieu, action, camera, lumiere, style et audio dans la prose. Pas d image chargee: ne parle jamais d image source ou d image fournie.`;
+        }
+        return `Remplis mon Workflows Q-builder en mode LTX 2.5 avec ${count} generations image-to-video. Scene: ${ask}\n\n${styleNote}Retourne uniquement un JSON array avec les champs name, seed, positive. Regle LTX 2.5 I2V: l image chargee est deja la source visuelle, donc ne redecris pas le sujet statique, ne remplace pas le decor, ne redesigne rien. Chaque positive doit etre un seul paragraphe fluide au present, sans timestamps, sans bullet points, sans libelles Shot 1, sans crochets de timing. Commence par "The scene comes to life from stillness" puis decris uniquement le mouvement, la camera et l audio. Verrouille ce qui doit rester fixe. Ajoute une action visible et un mouvement secondaire coherent. Termine par une indication audio claire, ou "and no music" si pas de musique.`;
+      }
+      if (!hasAnyLinkedImage()) {
+        return `Remplis mon Workflows Q-builder avec ${count} shots. Scene: ${ask}\n\n${styleNote}Retourne uniquement un JSON array avec les champs name, seed, positive. Aucun shot n'a d'image chargee: ne parle jamais d'image fournie, image source, reference image, provided image, source image, ni de preservation d'image. Le champ positive doit reprendre la description generale ci-dessus comme base principale; ajoute seulement un cadrage ou mouvement minimal si necessaire. Les prompts doivent etre mono-shot, une seule scene continue, pas de cuts, pas de transitions.`;
+      }
+      return `Remplis mon Workflows Q-builder avec ${count} shots. Scene: ${ask}\n\n${styleNote}Retourne uniquement un JSON array avec les champs name, seed, positive. Les prompts doivent etre mono-shot et adaptes a LTX image-to-video. Regle importante: l'image fournie est la source de verite. Chaque prompt doit commencer par "Use the source image as the first frame. Keep the same subject recognizable at all times; preserve key shapes, materials, colors, lighting, camera angle, and background." Decris ensuite une action visible mais controlee, pas seulement subtile. Ajoute toujours un mouvement secondaire si l'image le permet: bulles qui remontent, particules qui derivent, eau/air qui circule, reflets qui glissent, appendices/peau/vetements qui ondulent. Ne decris pas un nouveau sujet, n'invente pas d'anatomie, ne transforme pas la matiere, et evite morphing/melting/dissolving.`;
+    }
+
+    function extractOutputText(data) {
+      if (data.output_text) return data.output_text;
+      const texts = [];
+      for (const item of data.output || []) {
+        for (const content of item.content || []) {
+          if (content.type === "output_text" && content.text) texts.push(content.text);
+        }
+      }
+      return texts.join("\n");
+    }
+
+    async function generateWithApi() {
+      const ask = document.querySelector("#askText").value.trim();
+      const count = Math.max(1, Math.min(20, Number(document.querySelector("#shotCount").value) || 5));
+      const hasImages = hasAnyLinkedImage();
+      const styleNote = buildGenerationStyleNote();
+      requireKey();
+      if (!ask) throw new Error("Decris d'abord la scene.");
+
+      const messages = isH3() ? {
+        input: [
+          {
+            role: "system",
+            content: isH3Director()
+              ? "You generate JSON only for a MiniMax H3 Director queue. Output a JSON array only. Each item is one scene: {name, seed, cuts:[{seconds, text, speakers}]}. Scene text is English. Always write the literal tags <Subject 1>, <Subject 2> for declared characters, never a bare noun phrase. Anchor the location in every cut, including close-ups. Keep every scene at 15 seconds or less, cuts between 2 and 6 seconds. Put spoken lines in double quotes inside text and list the speaking Subject numbers in speakers."
+              : (h3T2vShotCount() > 1
+                ? `You generate JSON only for a MiniMax H3 text-to-video queue. Output a JSON array only. Each item has name, seed, positive. Each positive is present-tense English and MUST contain exactly ${h3T2vShotCount()} shots separated by hard cuts, written as literal "[Shot 1] ...", "[Shot 2] At 00:0X.X, ..." segments with the timestamp of each cut, totalling ${h3T2vDuration()} seconds. Change framing, angle or shot size at every cut while keeping the same location, characters and lighting. Never write one continuous camera move instead of real cuts. No bullets.`
+                : "You generate JSON only for a MiniMax H3 text-to-video queue. Output a JSON array only. Each item has name, seed, positive. Each positive is one flowing present-tense English paragraph with subject, place, action, camera, light and sound. No timestamps, no shot labels, no bullets. One continuous scene of 15 seconds or less.")
+          },
+          {
+            role: "user",
+            content: isH3Director()
+              ? `Create ${count} MiniMax H3 Director scenes for this brief:\n${ask}\n\n${styleNote}${h3ContentRules()} Use short filesystem-safe names. Seeds must be integers.`
+              : `Create ${count} MiniMax H3 text-to-video generations for this brief:\n${ask}\n\n${styleNote}Use short filesystem-safe names. Seeds must be integers. ${h3T2vShotCount() > 1 ? `Each generation must be cut into ${h3T2vShotCount()} shots of about ${(h3T2vDuration() / h3T2vShotCount()).toFixed(1)}s each, written as explicit [Shot n] segments with their timestamps.` : `Each generation is one continuous ${h3T2vDuration()}s take with no cut.`}`
+          }
+        ]
+      } : {
+        input: [
+          {
+            role: "system",
+            content: isLtx25()
+              ? (hasImages
+                ? "You generate JSON only for LTX 2.5 image-to-video prompt queues. Output a JSON array only. Each positive prompt is one flowing present-tense paragraph. Never use timestamps, bracketed beats, shot labels, or bullets. For I2V, the input image is the visual source of truth: do not re-describe static subject identity, do not redesign the subject, do not replace the background, and do not transform materials. Describe only motion, camera, and audio. Open with transition from stillness, lock static elements, and include audible ambience or no music."
+                : "You generate JSON only for LTX 2.5 text-to-video prompt queues. Output a JSON array only. Each positive prompt is one flowing present-tense paragraph. Never use timestamps, bracketed beats, shot labels, or bullets. Fold subject, setting, action, camera, lighting, style, and audio into prose.")
+              : (hasImages
+                ? "You generate JSON only for LTX image-to-video prompt queues. Each shot must be one continuous shot, no cuts, no transitions, no scene change. Use the source image as the first frame and identity anchor. Do not redesign the subject, replace the background, invent new anatomy, or transform materials. Describe visible controlled subject motion plus visible secondary environmental motion when available: rising bubbles, drifting particles, moving water, air, cloth, hair, skin, tentacles, limbs, or sliding reflections. Output a JSON array only."
+                : "You generate JSON only for LTX text-to-video prompt queues. Each shot must be one continuous shot, no cuts, no transitions, no scene change. The user has not loaded any image. Never mention provided image, source image, reference image, input image, or preserving an image. Base every prompt only on the user's scene description. Output a JSON array only.")
+          },
+          {
+            role: "user",
+            content: isLtx25()
+              ? (hasImages
+                ? `Create ${count} coherent LTX 2.5 image-to-video generations for this scene:\n${ask}\n\n${styleNote}Each item must have: name, seed, positive. Use short filesystem-safe names. Seeds must be integers. Each positive is one paragraph in present tense. Start with "The scene comes to life from stillness". Do not describe what the image already shows except short lock clauses for what must remain unchanged. Describe visible motion, camera motion, atmosphere motion, and audio only. No timestamps, no bullet points, no scene labels, no cuts unless the user explicitly asks for native multi-shot.`
+                : `Create ${count} coherent LTX 2.5 text-to-video generations for this scene:\n${ask}\n\n${styleNote}Each item must have: name, seed, positive. Use short filesystem-safe names. Seeds must be integers. Each positive is one flowing paragraph in present tense with subject, place, action, camera, light, style, and audio. No timestamps, no bullet points, no shot labels, no bracketed beats.`)
+              : (hasImages
+                ? `Create ${count} coherent LTX image-to-video shots for this scene:\n${ask}\n\n${styleNote}Each item must have: name, seed, positive. Use short filesystem-safe names. Seeds must be integers. Each positive prompt must start with: "Use the source image as the first frame. Keep the same subject recognizable at all times; preserve key shapes, materials, colors, lighting, camera angle, and background." Then describe visible controlled motion that fits the source image. Do not make it almost static: include one subject motion and one secondary environmental motion when available, for example rising bubbles, drifting particles, moving water, air, cloth, hair, skin, tentacles, limbs, or sliding reflections. Do not invent anatomy, do not introduce another subject, do not transform materials, and avoid morphing, melting, dissolving, or losing the source subject.`
+                : `Create ${count} coherent LTX text-to-video shots for this scene:\n${ask}\n\n${styleNote}Each item must have: name, seed, positive. Use short filesystem-safe names. Seeds must be integers. No images are loaded. Do not mention a provided image, source image, reference image, input image, or preserving an image. The positive field must mostly copy/use the user's general scene description above as the source text; add only minimal framing or motion if needed. Keep each prompt as a single continuous shot, no cuts, no transitions, no scene change.`)
+          }
+        ]
+      };
+
+      const system = messages.input.find(item => item.role === "system")?.content || "";
+      const user = messages.input.find(item => item.role === "user")?.content || "";
+      const text = await callProvider({ system, content: user, maxTokens: 9000 });
+      return parseJsonArrayFromModel(text);
+    }
+
+    function readFileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function describeShotImage(shot) {
+      requireKey();
+      const file = shot.querySelector(".shot-file").files?.[0];
+      if (!file) throw new Error("Choisis une image dans ce shot avant Describe.");
+      const imageDataUrl = await readFileAsDataUrl(file);
+      return callProvider({
+        system: "",
+        content: {
+          text: "Describe this image for an image-to-video prompt. Be short and literal. Focus only on visible subject identity, silhouette, materials, colors, lighting, camera angle, composition, and background. Do not invent actions. Output one compact paragraph, no bullets.",
+          imageDataUrl
+        },
+        maxTokens: 500
+      });
+    }
+
+    function injectDescription(shot, description) {
+      const prompt = shot.querySelector(".shot-prompt");
+      const current = prompt.value.trim();
+      const lockedPrefix = `Use the source image as the first frame. Keep the same subject recognizable at all times; preserve key shapes, materials, colors, lighting, camera angle, and background.\n\nImage description: ${description}`;
+      if (!current) {
+        prompt.value = `${lockedPrefix}\n\nAdd visible controlled motion to the existing subject while keeping the image identity stable. Also animate secondary elements if present: bubbles rise, particles drift, water or air moves, and reflections slide across surfaces. One continuous shot, no cuts, no scene change.`;
+        return;
+      }
+      const withoutOldDescription = current.replace(/Image description:[\s\S]*?(?=\n\n|$)/i, "").trim();
+      prompt.value = `${lockedPrefix}\n\n${withoutOldDescription}`;
+    }
+
+    function getImageDescription(promptText) {
+      const match = promptText.match(/Image description:\s*([\s\S]*?)(?=\n\n|$)/i);
+      return match?.[1]?.trim() || "";
+    }
+
+    function mergeGeneratedPromptWithExistingDescription(existingPrompt, generatedPrompt) {
+      const description = getImageDescription(existingPrompt);
+      if (!description) return generatedPrompt || "";
+      const cleanedGenerated = (generatedPrompt || "")
+        .replace(/Image description:[\s\S]*?(?=\n\n|$)/i, "")
+        .trim();
+      const prefix = `Use the source image as the first frame. Keep the same subject recognizable at all times; preserve key shapes, materials, colors, lighting, camera angle, and background.\n\nImage description: ${description}`;
+      return cleanedGenerated ? `${prefix}\n\n${cleanedGenerated}` : prefix;
+    }
+
+    function applyGeneratedShots(rows) {
+      const shotEls = getShotElements();
+      shotEls.forEach((shot, index) => {
+        const currentImage = shot.querySelector(".shot-image").value.trim();
+        const currentImagePath = shot.querySelector(".shot-image-path").value.trim();
+        const currentDatasetImage = shot.dataset.comfyImage || "";
+        const currentDatasetImagePath = shot.dataset.imagePath || "";
+        const currentStatus = shot.querySelector(".image-status").textContent;
+        const currentThumb = shot.querySelector(".thumb").innerHTML;
+        const currentPrompt = shot.querySelector(".shot-prompt").value.trim();
+        const generated = rows[index] || {};
+        const mergedPrompt = mergeGeneratedPromptWithExistingDescription(currentPrompt, generated.positive);
+        fillShot(shot, {
+          ...generated,
+          image: generated.image || currentImage || currentDatasetImage,
+          image_path: generated.image_path || currentImagePath || currentDatasetImagePath,
+          positive: mergedPrompt
+        }, index);
+        if (currentDatasetImage) shot.dataset.comfyImage = currentDatasetImage;
+        if (currentDatasetImagePath || currentImagePath) {
+          shot.dataset.imagePath = currentDatasetImagePath || currentImagePath;
+          shot.querySelector(".shot-image-path").value = currentDatasetImagePath || currentImagePath;
+        }
+        if (currentStatus) shot.querySelector(".image-status").textContent = currentStatus;
+        if (currentThumb && currentThumb !== "No image") shot.querySelector(".thumb").innerHTML = currentThumb;
+      });
+      document.querySelector("#apiRow").classList.toggle("active", document.querySelector("#aiMode").value === "api");
+      document.querySelector("#command").value = buildCommand();
+    }
+
+
+    function cleanImportedText(value) {
+      return (value || "").replace(/\r/g, "").replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+    }
+
+    function safeImportedName(value, index) {
+      const cleaned = cleanImportedText(value)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .slice(0, 48);
+      return cleaned || `shot_${String(index + 1).padStart(2, "0")}`;
+    }
+
+    function parsePromptBlock(text, index) {
+      const raw = cleanImportedText(text);
+      if (raw.length < 30) return null;
+      const seedMatch = raw.match(/\bseed\s*[:=]\s*(\d+)/i);
+      const nameMatch = raw.match(/\b(?:name|title|shot|plan)\s*[:=]\s*([^\n]+)/i);
+      const promptMatch = raw.match(/\b(?:positive|prompt)\s*[:=]\s*([\s\S]+)/i) || raw.match(/```(?:text|prompt)?\s*([\s\S]*?)```/i);
+      let positive = cleanImportedText(promptMatch ? promptMatch[1] : raw)
+        .replace(/\bseed\s*[:=]\s*\d+/i, "")
+        .replace(/\b(?:name|title|shot|plan)\s*[:=]\s*[^\n]+/i, "")
+        .trim();
+      if (positive.length < 30) return null;
+      return {
+        name: safeImportedName(nameMatch ? nameMatch[1] : positive.slice(0, 60), index),
+        seed: seedMatch ? Number(seedMatch[1]) : "",
+        positive
+      };
+    }
+
+    function extractPromptsFromHtml(rawHtml) {
+      const doc = new DOMParser().parseFromString(rawHtml, "text/html");
+      for (const script of doc.querySelectorAll("script[type='application/json'], script[data-prompts]")) {
+        try {
+          const parsed = JSON.parse(script.textContent.trim());
+          if (Array.isArray(parsed)) {
+            return parsed.map((item, index) => ({
+              name: item.name || item.title || `shot_${String(index + 1).padStart(2, "0")}`,
+              seed: item.seed || "",
+              positive: item.positive || item.prompt || item.text || "",
+              style: item.style || "global"
+            })).filter(item => item.positive).slice(0, 20);
+          }
+        } catch {}
+      }
+
+      const rows = [];
+      const seen = new Set();
+      const selectors = ["[data-prompt]", "[data-positive]", ".prompt", ".positive", ".shot", ".card", "article", "section", "li", "pre", "textarea"];
+      for (const selector of selectors) {
+        for (const el of doc.querySelectorAll(selector)) {
+          const text = el.getAttribute("data-prompt") || el.getAttribute("data-positive") || el.value || el.textContent || "";
+          const parsed = parsePromptBlock(text, rows.length);
+          if (!parsed) continue;
+          const key = parsed.positive.slice(0, 300);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          rows.push(parsed);
+          if (rows.length >= 20) return rows;
+        }
+      }
+      return rows;
+    }
+
+    async function loadPromptsHtmlFile(file) {
+      const raw = await file.text();
+      const rows = extractPromptsFromHtml(raw);
+      if (!rows.length) throw new Error("Aucun prompt detecte dans ce HTML.");
+      document.querySelector("#shotCount").value = Math.min(rows.length, 20);
+      applyGeneratedShots(rows);
+      setStatus("#status", `${Math.min(rows.length, 20)} prompt(s) charges depuis le HTML.`);
+    }
+    async function stageShotImage(shot, file) {
+      shot.dataset.imageFilename = file.name;
+      shot.dataset.comfyImage = "";
+      shot.querySelector(".shot-image").value = "";
+
+      if (location.protocol.startsWith("http")) {
+        const form = new FormData();
+        form.append("image", file);
+        form.append("filename_hint", file.name);
+        shot.querySelector(".image-status").textContent = t("Copie locale de l'image...");
+        const response = await fetch("/api/upload", { method: "POST", body: form });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(`Copie locale impossible (${response.status}) ${text.slice(0, 160)}`);
+        }
+        const data = await response.json();
+        shot.dataset.imagePath = data.path;
+        shot.querySelector(".shot-image-path").value = data.path;
+        shot.querySelector(".image-status").textContent = t("Image prete:") + " " + file.name;
+      } else {
+        shot.querySelector(".image-status").textContent = `Image choisie: ${file.name}. Lance l'app via ltx_builder_server.py pour remplir le chemin automatiquement.`;
+      }
+      document.querySelector("#command").value = buildCommand();
+    }
+
+    async function stageWorkflowFile(file) {
+      if (!file) return;
+      if (!location.protocol.startsWith("http")) {
+        setStatus("#status", "Lance l'app avec le bouton .bat pour utiliser Parcourir.", true);
+        return;
+      }
+      const form = new FormData();
+      form.append("workflow", file);
+      form.append("filename_hint", file.name);
+      setStatus("#status", "Copie locale du workflow...");
+      const response = await fetch("/api/workflow-upload", { method: "POST", body: form });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Workflow impossible a charger (${response.status}) ${text.slice(0, 180)}`);
+      }
+      const data = await response.json();
+      document.querySelector("#loadWorkflowPath").value = data.path;
+      document.querySelector("#workflowPreset").value = "load";
+      syncLoadWorkflowVisibility();
+      document.querySelector("#command").value = buildCommand();
+      setStatus("#status", `Workflow charge: ${file.name}`);
+    }
+
+
+
+    async function loadedWorkflowLooksLikeUi(path) {
+      if (!path || !location.protocol.startsWith("http")) return false;
+      const name = path.split(/[\\/]/).pop();
+      if (!name) return false;
+      try {
+        const response = await fetch(`/api/workflow-read?name=${encodeURIComponent(name)}`);
+        if (!response.ok) return false;
+        const data = await response.json();
+        return !!(data && Array.isArray(data.nodes) && Array.isArray(data.links));
+      } catch {
+        return false;
+      }
+    }
+    function syncLtxVersionUi() {
+      const frame = document.querySelector("#frameCount");
+      const size = document.querySelector("#videoSize");
+      const preset = document.querySelector("#workflowPreset");
+      if (isLtx25()) {
+        frame.placeholder = "Custom frame";
+        size.placeholder = "Custom size";
+        if (["t2v", "fast", "video_i2v_hq"].includes(preset.value)) {
+          preset.value = hasAnyLinkedImage() ? "ltx25_i2v" : "ltx25_t2v";
+        }
+      } else {
+        frame.placeholder = "Custom frame";
+        size.placeholder = "Custom size";
+        if (["ltx25_t2v", "ltx25_i2v", "ltx25_flf2v"].includes(preset.value)) {
+          preset.value = hasAnyLinkedImage() ? "fast" : "t2v";
+        }
+      }
+      refreshSizeOptions(false);
+      syncLoadWorkflowVisibility();
+      document.querySelector("#command").value = buildCommand();
+    }
+    document.querySelector("#aiMode").addEventListener("change", () => {
+      document.querySelector("#apiRow").classList.toggle("active", document.querySelector("#aiMode").value === "api");
+    });
+
+    document.querySelector("#clearAsk").addEventListener("click", () => {
+      document.querySelector("#askText").value = "";
+      setStatus("#askStatus", "ASK GPT efface.");
+    });
+
+    document.querySelector("#ltxVersion").addEventListener("change", syncLtxVersionUi);
+
+    document.querySelector("#modelFamily").addEventListener("change", syncModelUi);
+    document.querySelector("#h3Engine").addEventListener("change", syncModelUi);
+
+    // Tout ce qui alimente les briefs H3 doit regenerer la commande, sinon le
+    // bloc PowerShell affiche des reglages perimes sans rien signaler.
+    const h3Inputs = [
+      "#h3ProjectDir", "#h3RefsSubdir", "#h3LinkMode", "#h3OutputName",
+      "#h3AspectRatio", "#h3Megapixels", "#h3Steps", "#h3T2vDuration", "#h3T2vShots",
+      "#h3Sampler", "#h3Scheduler", "#h3RefImageSize", "#h3DialogueLanguage",
+      "#h3StyleLine", "#h3Soundscape", "#h3Music",
+      "#h3BackgroundFile", "#h3BackgroundDescription",
+      "#h3OutputMode", "#h3TemplatePath", "#h3OutDir", "#h3Preview", "#h3T2vWorkflow"
+    ];
+    h3Inputs.forEach(selector => {
+      const element = document.querySelector(selector);
+      if (!element) return;
+      const eventName = element.tagName === "SELECT" || element.type === "checkbox" ? "change" : "input";
+      element.addEventListener(eventName, () => {
+        if (isH3()) document.querySelector("#command").value = buildCommand();
+      });
+    });
+
+    // Les deux sorties ne prennent pas le meme fichier : --queue exige un
+    // Export (API), la sortie fichiers un template UI deposable dans ComfyUI.
+    // On bascule le defaut sans jamais ecraser un chemin choisi a la main.
+    const H3_TEMPLATE_DEFAULTS = { queue: "h3_director_api.json", files: "h3_template_scout_v1.json" };
+    document.querySelector("#h3OutputMode").addEventListener("change", (event) => {
+      const path = document.querySelector("#h3TemplatePath");
+      if (Object.values(H3_TEMPLATE_DEFAULTS).includes(path.value.trim())) {
+        path.value = H3_TEMPLATE_DEFAULTS[event.target.value];
+      }
+      document.querySelector("#command").value = buildCommand();
+    });
+
+    document.querySelector("#h3Refs").addEventListener("input", () => {
+      updateH3Hint();
+      document.querySelector("#command").value = buildCommand();
+    });
+
+    document.querySelector("#h3Refs").addEventListener("change", () => {
+      updateH3Hint();
+      document.querySelector("#command").value = buildCommand();
+    });
+
+    document.querySelector("#browseH3Template").addEventListener("click", () => {
+      document.querySelector("#h3TemplateFile").click();
+    });
+
+    document.querySelector("#h3TemplateFile").addEventListener("change", async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        const form = new FormData();
+        form.append("workflow", file);
+        form.append("filename_hint", file.name);
+        const response = await fetch("/api/workflow-upload", { method: "POST", body: form });
+        if (!response.ok) {
+          const text = await response.text();
+          throw new Error(`Template refuse (${response.status}) ${text.slice(0, 180)}`);
+        }
+        const data = await response.json();
+        document.querySelector("#h3TemplatePath").value = data.path;
+        document.querySelector("#command").value = buildCommand();
+        setStatus("#status", `Template H3 charge: ${file.name}`);
+      } catch (error) {
+        setStatus("#status", error.message, true);
+      } finally {
+        event.target.value = "";
+      }
+    });
+
+    document.querySelector("#workflowPreset").addEventListener("change", () => {
+      syncVersionFromWorkflowPreset();
+      syncLoadWorkflowVisibility();
+      document.querySelector("#command").value = buildCommand();
+    });
+
+    document.querySelector("#loadWorkflowPath").addEventListener("input", () => {
+      document.querySelector("#command").value = buildCommand();
+    });
+
+    document.querySelector("#browseWorkflow").addEventListener("click", () => {
+      document.querySelector("#workflowFile").click();
+    });
+
+    document.querySelector("#workflowFile").addEventListener("change", async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        await stageWorkflowFile(file);
+      } catch (error) {
+        setStatus("#status", error.message, true);
+      } finally {
+        event.target.value = "";
+      }
+    });
+
+    ["#frameCount", "#videoSize", "#noiseSeed"].forEach(selector => {
+      document.querySelector(selector).addEventListener("input", () => {
+        if (selector === "#frameCount") document.querySelector("#framePreset").value = "";
+        document.querySelector("#command").value = buildCommand();
+      });
+    });
+
+    document.querySelector("#framePreset").addEventListener("change", () => {
+      document.querySelector("#frameCount").value = document.querySelector("#framePreset").value;
+      document.querySelector("#command").value = buildCommand();
+    });
+
+    document.querySelector("#formatPreset").addEventListener("change", () => {
+      refreshSizeOptions(true);
+      document.querySelector("#command").value = buildCommand();
+    });
+
+    document.querySelector("#sizePreset").addEventListener("change", () => {
+      document.querySelector("#videoSize").value = document.querySelector("#sizePreset").value;
+      document.querySelector("#command").value = buildCommand();
+    });
+
+    document.querySelector("#globalStylePreset").addEventListener("change", () => {
+      updateStyleCustomVisibility();
+      document.querySelector("#command").value = buildCommand();
+    });
+
+    document.querySelector("#globalCustomStyle").addEventListener("input", () => {
+      document.querySelector("#command").value = buildCommand();
+    });
+
+    document.querySelector("#loadPromptHtml").addEventListener("click", () => {
+      document.querySelector("#promptHtmlFile").click();
+    });
+
+    document.querySelector("#promptHtmlFile").addEventListener("change", async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        await loadPromptsHtmlFile(file);
+      } catch (error) {
+        setStatus("#status", error.message, true);
+      } finally {
+        event.target.value = "";
+      }
+    });
+
+    document.querySelector("#apiProvider").addEventListener("change", () => {
+      syncProviderUi();
+      setStatus("#askStatus", currentKey()
+        ? `${providerConfig().label} pret.`
+        : `${providerConfig().label} : ajoute sa cle API (${providerConfig().keyPage}).`, !currentKey());
+    });
+
+    document.querySelector("#apiModel").addEventListener("change", () => {
+      modelCache[providerId() + ":selected"] = document.querySelector("#apiModel").value;
+    });
+
+    document.querySelector("#refreshModels").addEventListener("click", async () => {
+      try {
+        setStatus("#askStatus", `Liste des modeles ${providerConfig().label} en cours...`);
+        const models = await fetchProviderModels();
+        if (!models.length) throw new Error("Le fournisseur n'a renvoye aucun modele utilisable.");
+        modelCache[providerId()] = models;
+        populateModelSelect(models);
+        setStatus("#askStatus", `${models.length} modeles ${providerConfig().label} charges.`);
+      } catch (error) {
+        setStatus("#askStatus", error.message, true);
+      }
+    });
+
+    document.querySelector("#openKeyModal").addEventListener("click", () => {
+      document.querySelector("#apiKeyInput").value = "";
+      document.querySelector("#rememberKey").checked = !!localStorage.getItem(keyStorageName(providerId()));
+      document.querySelector("#keyModal").showModal();
+      setTimeout(() => document.querySelector("#apiKeyInput").focus(), 50);
+    });
+
+    document.querySelector("#saveKey").addEventListener("click", () => {
+      const value = document.querySelector("#apiKeyInput").value.trim();
+      if (!value) {
+        setStatus("#askStatus", "Aucune cle saisie.", true);
+        return;
+      }
+      const id = providerId();
+      const remember = document.querySelector("#rememberKey").checked;
+      apiKeys[id] = value;
+      if (remember) {
+        localStorage.setItem(keyStorageName(id), value);
+      } else {
+        localStorage.removeItem(keyStorageName(id));
+      }
+      document.querySelector("#apiKeyInput").value = "";
+      document.querySelector("#keyStatus").textContent = t(remember ? "Cle stockee sur cet ordinateur" : "Cle chargee en memoire");
+      document.querySelector("#keyModal").close();
+      setStatus("#askStatus", remember
+        ? `Cle ${providerConfig().label} prete et stockee localement.`
+        : `Cle ${providerConfig().label} prete. Elle n'est pas stockee.`);
+    });
+
+    document.querySelector("#forgetKey").addEventListener("click", () => {
+      const id = providerId();
+      delete apiKeys[id];
+      localStorage.removeItem(keyStorageName(id));
+      document.querySelector("#apiKeyInput").value = "";
+      document.querySelector("#rememberKey").checked = false;
+      document.querySelector("#keyStatus").textContent = t("Aucune cle (") + providerConfig().keyPage + ")";
+      document.querySelector("#keyModal").close();
+      setStatus("#askStatus", `Cle ${providerConfig().label} oubliee.`);
+    });
+
+    document.querySelector("#askGenerate").addEventListener("click", async () => {
+      const mode = document.querySelector("#aiMode").value;
+      saveAskToHistory(
+        document.querySelector("#askText").value,
+        mode,
+        Math.max(1, Math.min(20, Number(document.querySelector("#shotCount").value) || 5))
+      );
+      try {
+        if (mode === "local") {
+          const request = localCodexRequest();
+          await navigator.clipboard.writeText(request);
+          setStatus("#askStatus", "Demande LOCAL copiee. Colle-la dans Codex, puis colle le JSON obtenu ici si tu veux que je l'integre.");
+          document.querySelector("#command").value = request;
+          return;
+        }
+        const model = document.querySelector("#apiModel").value;
+        setStatus("#askStatus", `Generation via ${providerConfig().label} (${model})...`);
+        const rows = await generateWithApi();
+        applyGeneratedShots(rows);
+        setStatus("#askStatus", `${rows.length} ${isH3Director() ? "scene(s)" : "shots"} generes par ${model}.`);
+      } catch (error) {
+        setStatus("#askStatus", error.message, true);
+      }
+    });
+
+    document.querySelector("#openHistory").addEventListener("click", () => {
+      renderAskHistory();
+      document.querySelector("#historyModal").showModal();
+    });
+
+    document.querySelector("#clearHistory").addEventListener("click", () => {
+      localStorage.removeItem(askHistoryKey);
+      renderAskHistory();
+      setStatus("#askStatus", "Historique efface.");
+    });
+
+    document.querySelector("#historyList").addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-history-index]");
+      if (!button) return;
+      const item = getAskHistory()[Number(button.dataset.historyIndex)];
+      if (!item) return;
+      document.querySelector("#askText").value = item.text;
+      if (item.count) document.querySelector("#shotCount").value = item.count;
+      document.querySelector("#historyModal").close();
+      setStatus("#askStatus", "Demande rechargee.");
+    });
+
+    document.querySelector("#build").addEventListener("click", () => {
+      document.querySelector("#command").value = buildCommand();
+    });
+
+    document.querySelector("#copy").addEventListener("click", async () => {
+      const command = document.querySelector("#command").value || buildCommand();
+      document.querySelector("#command").value = command;
+      if (!command) return;
+      await navigator.clipboard.writeText(command);
+      setStatus("#status", "Commande copiee.");
+      if (isH3Director()) {
+        const briefs = collectH3Briefs();
+        const files = document.querySelector("#h3OutputMode").value === "files";
+        alert(t(`Commande copiee. ${briefs.length} scene(s) H3. Colle-la dans PowerShell, puis Entree.\n\n`
+          + (files
+            ? "Les .json produits se glissent dans ComfyUI (un onglet par fichier), puis Run sur chacun."
+            : "Les scenes partent directement dans la file ComfyUI.")
+          + "\nLance UN SEUL rendu en test avant d'empiler le lot: un job qui OOM ne bloque pas la file, les suivants echouent pareil."));
+        return;
+      }
+      const rows = collectRows();
+      const imageCount = rows.filter(row => row.image || row.image_path).length;
+      alert(t(`Commande copiee. Images liees: ${imageCount}/${rows.length}. Colle-la dans PowerShell, puis appuie sur Entree pour lancer la queue ComfyUI.`));
+    });
+
+    document.querySelector("#clearAll").addEventListener("click", () => {
+      getShotElements().forEach((shot, index) => fillShot(shot, { name: `shot_${String(index + 1).padStart(2, "0")}`, seed: 1125119286042028 + index, positive: "", clearCuts: true }, index));
+      document.querySelector("#command").value = "";
+      setStatus("#status", "Tous les prompts ont ete effaces.");
+    });
+
+    shots.addEventListener("click", async (event) => {
+      const shot = event.target.closest(".shot");
+      if (!shot) return;
+      const index = getShotElements().indexOf(shot);
+      if (event.target.classList.contains("shot-clear")) {
+        fillShot(shot, { name: `shot_${String(index + 1).padStart(2, "0")}`, seed: 1125119286042028 + index, positive: "", clearCuts: true }, index);
+        setStatus("#status", `Shot ${index + 1} efface.`);
+      }
+      if (event.target.classList.contains("shot-copy")) {
+        const payload = {
+          name: shot.querySelector(".shot-name").value.trim(),
+          seed: shot.querySelector(".shot-seed").value.trim(),
+          image: shot.querySelector(".shot-image").value.trim(),
+          positive: shot.querySelector(".shot-prompt").value.trim(),
+          style: shot.querySelector(".shot-style")?.value || "global",
+          custom_style: shot.querySelector(".shot-custom-style")?.value.trim() || ""
+        };
+        await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+        setStatus("#status", `Shot ${index + 1} copie.`);
+      }
+      if (event.target.classList.contains("shot-describe")) {
+        try {
+          shot.querySelector(".image-status").textContent = t("Description GPT en cours...");
+          const description = await describeShotImage(shot);
+          injectDescription(shot, description);
+          shot.querySelector(".image-status").textContent = t("Description ajoutee au prompt.");
+          document.querySelector("#command").value = buildCommand();
+          setStatus("#status", `Shot ${index + 1} decrit.`);
+        } catch (error) {
+          shot.querySelector(".image-status").textContent = error.message;
+          setStatus("#status", error.message, true);
+        }
+      }
+    });
+
+    shots.addEventListener("input", (event) => {
+      if (event.target.classList.contains("shot-custom-style")) {
+        document.querySelector("#command").value = buildCommand();
+        return;
+      }
+      if (event.target.classList.contains("shot-cuts")) {
+        updateCutsInfo(event.target.closest(".shot"));
+        document.querySelector("#command").value = buildCommand();
+        return;
+      }
+      if (isH3() && (event.target.classList.contains("shot-name")
+        || event.target.classList.contains("shot-seed")
+        || event.target.classList.contains("shot-prompt"))) {
+        // En H3 T2V le prompt alimente aussi le compteur de coupes du statut :
+        // sans ca, l'avertissement multishot resterait fige sur l'etat precedent.
+        document.querySelector("#command").value = buildCommand();
+      }
+    });
+
+    shots.addEventListener("change", async (event) => {
+      if (event.target.classList.contains("shot-style")) {
+        updateStyleCustomVisibility(event.target.closest(".shot"));
+        document.querySelector("#command").value = buildCommand();
+        return;
+      }
+      if (!event.target.classList.contains("shot-file")) return;
+      const shot = event.target.closest(".shot");
+      const file = event.target.files?.[0];
+      if (!shot || !file) return;
+      shot.querySelector(".image-status").textContent = t("Fichier choisi:") + " " + file.name;
+      const oldUrl = shot.dataset.thumbUrl;
+      if (oldUrl) URL.revokeObjectURL(oldUrl);
+      const url = URL.createObjectURL(file);
+      shot.dataset.thumbUrl = url;
+      shot.querySelector(".thumb").innerHTML = `<img alt="Selected image preview" src="${url}">`;
+      try {
+        await stageShotImage(shot, file);
+        setStatus("#status", "Image liee au shot. Elle sera uploadee par Python au lancement.");
+      } catch (error) {
+        shot.querySelector(".image-status").textContent = error.message;
+        setStatus("#status", error.message, true);
+      }
+    });
+
+    syncModelUi();
+
+    // La ligne API (bouton "Ajouter / changer" + choix du modele) n'etait
+    // affichee qu'au CHANGEMENT de #aiMode. Comme il vaut deja "api" au
+    // chargement, elle restait invisible : l'app reclamait une cle sans
+    // proposer nulle part ou la saisir.
+    document.querySelector("#apiRow").classList.toggle("active", document.querySelector("#aiMode").value === "api");
+
+    document.querySelectorAll(".lang-option").forEach(button => {
+      button.addEventListener("click", () => applyLanguage(button.dataset.lang));
+    });
+
+    document.querySelector("#themeToggle").addEventListener("click", () => {
+      applyTheme(document.body.classList.contains("theme-light") ? "dark" : "light");
+    });
+
+    loadStoredKeys();
+    syncProviderUi();
+
+    applyTheme(localStorage.getItem(themeStorageKey) === "light" ? "light" : "dark");
+    applyLanguage(LANG);
+
+    // Le dossier de travail vient du serveur, pas du HTML : l'app doit pouvoir
+    // etre copiee telle quelle sur une autre machine, a un autre emplacement.
+    (async () => {
+      if (!location.protocol.startsWith("http")) return;
+      try {
+        const response = await fetch("/api/env");
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!data.root) return;
+        if (data.python) pythonExe = data.python;
+        document.querySelector("#folder").value = data.root;
+        document.querySelector("#command").value = buildCommand();
+      } catch {}
+    })();
+  </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
