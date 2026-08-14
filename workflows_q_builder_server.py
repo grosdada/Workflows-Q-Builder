@@ -320,6 +320,9 @@ class Handler(BaseHTTPRequestHandler):
             payload.update(local_settings())
             self.send_json(payload)
             return
+        if parsed.path == "/api/ref-image":
+            self.handle_ref_image(parse_qs(parsed.query))
+            return
         if parsed.path == "/api/workflow-read":
             self.handle_workflow_read(parse_qs(parsed.query))
             return
@@ -531,6 +534,35 @@ class Handler(BaseHTTPRequestHandler):
             "path": str(target),
             "format": "ui" if is_ui else "api",
         })
+
+    def handle_ref_image(self, query):
+        """Sert l'image de reference telle que ComfyUI la verra.
+
+        L'apercu au survol montre le fichier reellement present dans le dossier
+        input, pas celui qu'on vient de choisir dans le navigateur : c'est la
+        seule facon de verifier que le workflow aura bien la bonne image.
+        """
+        name = Path(unquote((query.get("name") or [""])[0])).name
+        project = Path(unquote((query.get("project") or [""])[0])).name
+        if not name:
+            self.send_error(404)
+            return
+
+        candidates = []
+        comfy_input = local_settings().get("comfy_input", "")
+        if comfy_input:
+            base = Path(comfy_input) / "musedirector"
+            if project:
+                candidates.append(base / project / name)
+            candidates.append(base / name)
+            candidates.append(Path(comfy_input) / name)
+        candidates.append(UPLOAD_DIR / name)
+
+        for candidate in candidates:
+            if candidate.is_file():
+                self.send_file(candidate)
+                return
+        self.send_error(404)
 
     def handle_workflow_read(self, query):
         name = (query.get("name") or [""])[0]

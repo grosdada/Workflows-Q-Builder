@@ -231,9 +231,25 @@
     .h3-ref-row {
       display: grid;
       grid-template-columns: 34px minmax(150px, 0.9fr) minmax(0, 2.2fr) 150px;
-      gap: 8px;
+      gap: 8px 8px;
       align-items: center;
+      margin-bottom: 6px;
     }
+
+    /* Retour d'information DANS la ligne : le panneau d'etat est a l'autre bout
+       de la page, on cliquait ici sans rien voir se passer. */
+    .ref-state {
+      grid-column: 2 / -1;
+      min-height: 0;
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    .ref-state:empty { display: none; }
+    .ref-state.warn { color: var(--danger); }
+    .ref-state.ok { color: var(--accent-2); }
 
     .h3-ref-row .ref-num {
       color: var(--muted);
@@ -267,6 +283,36 @@
     .ref-cell button:hover { color: var(--text); }
     .ref-cell button.busy { opacity: 0.5; }
     .ref-cell button.done { color: var(--accent-2); border-color: var(--accent-2); }
+
+    /* Apercu au survol : l'image montree est celle servie par le serveur depuis
+       le dossier input de ComfyUI, donc bien celle que le workflow utilisera. */
+    #refPreview {
+      position: fixed;
+      z-index: 50;
+      display: none;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+      pointer-events: none;
+    }
+
+    #refPreview.visible { display: block; }
+
+    #refPreview img {
+      display: block;
+      max-width: 320px;
+      max-height: 320px;
+      border-radius: 3px;
+    }
+
+    #refPreview .caption {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 11px;
+      text-align: center;
+    }
 
     .h3-hint {
       margin: 0;
@@ -939,6 +985,8 @@
       <p class="h3-hint" id="h3Hint"></p>
     </section>
 
+    <div id="refPreview" aria-hidden="true"><img alt=""><div class="caption"></div></div>
+
     <div class="layout">
       <section class="shots" id="shots"></section>
 
@@ -1343,6 +1391,15 @@
       ["le serveur n'a pas renvoye de dossier", "the server returned no folder"],
       ["reponse ", "response "],
       ["Rien a synchroniser avant de lancer.", "Nothing to sync before running."],
+      ["Copie en cours...", "Copying..."],
+      ["Copiee dans ComfyUI:", "Copied into ComfyUI:"],
+      ["Copiee dans le dossier de l'app:", "Copied into the app folder:"],
+      ["Trouvee dans ComfyUI:", "Found in ComfyUI:"],
+      ["Aucune image nommee", "No image named"],
+      ["dans musedirector. Utilise le bouton Image, ou copie-la toi-meme.",
+       "in musedirector. Use the Image button, or copy it yourself."],
+      ["decrite par", "described by"],
+      ["Ref ", "Ref "],
       ["Image copiee dans ComfyUI:", "Image copied into ComfyUI:"],
       ["Image copiee dans le dossier de l'app:", "Image copied into the app folder:"],
       ["Renseigne comfy_input dans local_settings.json pour qu'elle aille directement dans ComfyUI.",
@@ -1836,6 +1893,7 @@
             <button type="button" class="ref-describe" title="Decrire l'image avec le modele choisi">Describe</button>
           </div>
           <select class="h3-ref-retention" data-index="${index}">${retentionOptions}</select>
+          <div class="ref-state"></div>
         </div>
       `).join("");
     }
@@ -3157,11 +3215,59 @@
     // memoire pour que Describe puisse le relire sans le redemander.
     const h3RefFiles = new Map();
 
+    function setRefState(row, message, tone = "") {
+      const state = row.querySelector(".ref-state");
+      if (!state) return;
+      state.textContent = t(message);
+      state.className = `ref-state${tone ? " " + tone : ""}`;
+    }
+
+    function h3ProjectName() {
+      return document.querySelector("#h3ProjectDir").value.trim()
+        .replace(/[\\/]+$/, "").split(/[\\/]/).pop() || "";
+    }
+
+    function refImageUrl(name) {
+      return `/api/ref-image?name=${encodeURIComponent(name)}&project=${encodeURIComponent(h3ProjectName())}`;
+    }
+
     document.querySelector("#h3Refs").addEventListener("click", (event) => {
       const pick = event.target.closest(".ref-pick");
       if (pick) {
         pick.closest(".h3-ref-row").querySelector(".h3-ref-input").click();
       }
+    });
+
+    // Survol du bouton : on montre l'image telle que le serveur la trouve, donc
+    // celle que ComfyUI utilisera. Un nom saisi a la main est verifie de la
+    // meme facon — s'il n'y a rien a cet endroit, l'apercu reste vide.
+    const refPreview = document.querySelector("#refPreview");
+
+    function showRefPreview(button) {
+      const row = button.closest(".h3-ref-row");
+      const name = row.querySelector(".h3-ref-file").value.trim();
+      if (!name || !location.protocol.startsWith("http")) return;
+      const image = refPreview.querySelector("img");
+      const rect = button.getBoundingClientRect();
+      image.onerror = () => { refPreview.classList.remove("visible"); };
+      image.onload = () => {
+        refPreview.classList.add("visible");
+        const width = refPreview.offsetWidth;
+        const height = refPreview.offsetHeight;
+        refPreview.style.left = `${Math.min(rect.left, window.innerWidth - width - 12)}px`;
+        refPreview.style.top = `${Math.max(8, rect.top - height - 8)}px`;
+      };
+      refPreview.querySelector(".caption").textContent = name;
+      image.src = refImageUrl(name);
+    }
+
+    document.querySelector("#h3Refs").addEventListener("mouseover", (event) => {
+      const button = event.target.closest(".ref-pick");
+      if (button) showRefPreview(button);
+    });
+
+    document.querySelector("#h3Refs").addEventListener("mouseout", (event) => {
+      if (event.target.closest(".ref-pick")) refPreview.classList.remove("visible");
     });
 
     document.querySelector("#h3Refs").addEventListener("change", async (event) => {
@@ -3173,12 +3279,12 @@
       const index = row.dataset.index;
       h3RefFiles.set(index, file);
       button.classList.add("busy");
+      setRefState(row, "Copie en cours...");
       try {
         if (!location.protocol.startsWith("http")) throw new Error("Lance l'app par le .bat pour copier l'image.");
-        const projectDir = document.querySelector("#h3ProjectDir").value.trim();
         const form = new FormData();
         form.append("image", file);
-        form.append("project", projectDir.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || "");
+        form.append("project", h3ProjectName());
         const response = await fetch("/api/h3-ref-upload", { method: "POST", body: form });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || `copie impossible (${response.status})`);
@@ -3186,15 +3292,43 @@
         button.classList.add("done");
         updateH3Hint();
         document.querySelector("#command").value = buildCommand();
-        setStatus("#status", data.in_comfy
-          ? `Image copiee dans ComfyUI: ${data.subfolder}/${data.filename}. Rien a synchroniser avant de lancer.`
-          : `Image copiee dans le dossier de l'app: ${data.filename}. Renseigne comfy_input dans local_settings.json pour qu'elle aille directement dans ComfyUI.`,
-          !data.in_comfy);
+        const message = data.in_comfy
+          ? `Copiee dans ComfyUI: ${data.subfolder}/${data.filename}. Rien a synchroniser avant de lancer.`
+          : `Copiee dans le dossier de l'app: ${data.filename}. Renseigne comfy_input dans local_settings.json pour qu'elle aille directement dans ComfyUI.`;
+        // Le retour est dans la ligne ET dans le panneau : selon l'endroit ou
+        // on regarde, l'un des deux est hors de l'ecran.
+        setRefState(row, message, data.in_comfy ? "ok" : "warn");
+        setStatus("#status", message, !data.in_comfy);
       } catch (error) {
+        setRefState(row, error.message, "warn");
         setStatus("#status", error.message, true);
       } finally {
         button.classList.remove("busy");
         event.target.value = "";
+      }
+    });
+
+    // Nom tape a la main : on va voir si une image porte ce nom la ou ComfyUI
+    // regardera. Sans ca, une faute de frappe ne se voyait qu'au RUN.
+    document.querySelector("#h3Refs").addEventListener("change", async (event) => {
+      if (!event.target.classList.contains("h3-ref-file")) return;
+      const row = event.target.closest(".h3-ref-row");
+      const name = event.target.value.trim();
+      if (!name || !location.protocol.startsWith("http")) {
+        setRefState(row, "");
+        return;
+      }
+      try {
+        const response = await fetch(refImageUrl(name), { method: "GET" });
+        if (response.ok) {
+          setRefState(row, `Trouvee dans ComfyUI: ${name}`, "ok");
+          row.querySelector(".ref-pick").classList.add("done");
+        } else {
+          setRefState(row, `Aucune image nommee ${name} dans musedirector. Utilise le bouton Image, ou copie-la toi-meme.`, "warn");
+          row.querySelector(".ref-pick").classList.remove("done");
+        }
+      } catch {
+        setRefState(row, "");
       }
     });
 
@@ -3224,8 +3358,11 @@
         describe.classList.add("done");
         updateH3Hint();
         document.querySelector("#command").value = buildCommand();
-        setStatus("#status", `Ref ${Number(row.dataset.index) + 1} decrite par ${document.querySelector("#apiModel").value}.`);
+        const message = `Ref ${Number(row.dataset.index) + 1} decrite par ${document.querySelector("#apiModel").value}.`;
+        setRefState(row, message, "ok");
+        setStatus("#status", message);
       } catch (error) {
+        setRefState(row, error.message, "warn");
         setStatus("#status", error.message, true);
       } finally {
         describe.classList.remove("busy");
