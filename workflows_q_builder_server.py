@@ -258,11 +258,24 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         print("%s - %s" % (self.address_string(), fmt % args))
 
+    def send_no_cache(self):
+        """Interdit la mise en cache.
+
+        Sans ca, une mise a jour remplace bien les fichiers sur le disque mais
+        le navigateur continue de servir l'ancienne page depuis son cache : on
+        clique Update, tout se passe bien, et rien ne change a l'ecran. Vecu
+        sur un poste secondaire.
+        """
+        self.send_header("Cache-Control", "no-store, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+
     def send_json(self, data, status=200):
         body = json.dumps(data).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_no_cache()
         self.end_headers()
         self.wfile.write(body)
 
@@ -274,6 +287,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", guess_type(path))
         self.send_header("Content-Length", str(len(body)))
+        self.send_no_cache()
         self.end_headers()
         self.wfile.write(body)
 
@@ -301,7 +315,8 @@ class Handler(BaseHTTPRequestHandler):
             # n'est pas dans le PATH (ou ou l'app tourne avec le Python
             # embarque de ComfyUI), la commande generee doit designer le meme
             # interpreteur que celui qui fait tourner ce serveur.
-            payload = {"root": str(ROOT), "app": APP_HTML, "python": sys.executable}
+            payload = {"root": str(ROOT), "app": APP_HTML, "python": sys.executable,
+                       "version": read_version().get("sha", "")}
             payload.update(local_settings())
             self.send_json(payload)
             return

@@ -3505,14 +3505,19 @@
           setStatus("#askStatus", "Rien a remplacer : les fichiers etaient deja identiques.");
           return;
         }
+        const pageChanged = data.updated.some(name => name.endsWith(".html"));
         setStatus("#askStatus", data.needs_restart
           ? `${count} fichier(s) mis a jour. Ferme la fenetre noire et relance le .bat pour appliquer.`
-          : `${count} fichier(s) mis a jour. Recharge la page (Ctrl+F5).`);
+          : `${count} fichier(s) mis a jour.`);
         alert(t(`Mise a jour installee: ${count} fichier(s).\n\n`)
           + t(data.needs_restart
             ? "Des scripts Python ont change : ferme la fenetre noire du serveur et relance le .bat."
-            : "Recharge la page avec Ctrl+F5 pour voir les changements.")
+            : "La page va se recharger.")
           + t("\n\nL'ancienne version est sauvegardee dans _backup_previous."));
+        // L'interface qui tourne est celle chargee avant la mise a jour : sans
+        // rechargement, on clique Update, tout reussit, et rien ne change a
+        // l'ecran. On recharge donc nous-memes plutot que de le demander.
+        if (pageChanged && !data.needs_restart) location.reload();
       } catch (error) {
         setStatus("#askStatus", `Update: ${error.message}`, true);
       } finally {
@@ -3561,6 +3566,12 @@
         const data = await response.json();
         if (!data.root) throw new Error("le serveur n'a pas renvoye de dossier");
         if (data.python) pythonExe = data.python;
+        // Version affichee sur le bouton : « ca a bien installe ? » devient une
+        // question a laquelle on repond d'un coup d'oeil.
+        if (data.version) {
+          const button = document.querySelector("#updateButton");
+          button.title = `${t("Chercher une mise a jour")} — version ${data.version}`;
+        }
         // Reglages locaux (local_settings.json), absents du depot.
         if (data.workflow_browse_path) {
           const field = document.querySelector("#loadWorkflowPath");
