@@ -187,6 +187,51 @@ def local_sync_command(settings):
     )
 
 
+def available_node_types(server):
+    """Types de noeuds que CE ComfyUI connait, ou None s'il ne repond pas.
+
+    Demander avant d'envoyer evite un refus opaque : on sait exactement quel
+    paquet de noeuds manque sur la machine, au lieu de lire un HTTP 400.
+    """
+    try:
+        request = urllib.request.Request(f"{server.rstrip('/')}/object_info",
+                                         headers={"User-Agent": "WorkflowsQBuilder"})
+        with urllib.request.urlopen(request, timeout=20) as response:
+            return set(json.loads(response.read().decode("utf-8")).keys())
+    except (urllib.error.URLError, ValueError, TypeError):
+        return None
+
+
+def prune_unusable_nodes(workflow, available):
+    """Retire les noeuds absents dont personne ne consomme la sortie.
+
+    Un PurgeVRAM ou un apercu ne sert qu'a lui-meme : sur une machine qui n'a
+    pas le paquet correspondant, le workflow entier etait refuse pour un noeud
+    qui n'entre dans aucun calcul. Ceux dont une sortie est utilisee, eux, ne
+    peuvent pas etre retires sans casser le graphe : on les signale.
+    """
+    missing = {node_id: node.get("class_type")
+               for node_id, node in workflow.items()
+               if isinstance(node, dict) and node.get("class_type") not in available}
+    if not missing:
+        return [], []
+
+    consumed = set()
+    for node in workflow.values():
+        for value in (node.get("inputs") or {}).values():
+            if isinstance(value, list) and value and isinstance(value[0], str):
+                consumed.add(value[0])
+
+    dropped, blocking = [], []
+    for node_id, class_type in missing.items():
+        if node_id in consumed:
+            blocking.append((node_id, class_type))
+        else:
+            dropped.append((node_id, class_type))
+            workflow.pop(node_id, None)
+    return dropped, blocking
+
+
 def describe_comfy_rejection(exc):
     """Rend lisible un refus de ComfyUI (HTTP 400 sur /prompt).
 
@@ -288,6 +333,9 @@ def main():
         out_dir.mkdir(parents=True, exist_ok=True)
 
     client_id = str(uuid.uuid4())
+    # On demande une seule fois a ComfyUI ce qu'il sait faire : inutile de
+    # preparer huit scenes pour se faire refuser la premiere.
+    available = available_node_types(args.server) if args.queue else None
     queued = []
     written = []
     failures = 0
@@ -324,6 +372,18 @@ def main():
             continue
 
         if args.queue:
+            if available:
+                dropped, blocking = prune_unusable_nodes(workflow, available)
+                for node_id, class_type in dropped:
+                    print(f"  noeud {node_id} ({class_type}) absent de ce ComfyUI et inutile au calcul : retire")
+                if blocking:
+                    details = "\n".join(f"  - {class_type} (noeud {node_id})" for node_id, class_type in blocking)
+                    raise SystemExit(
+                        f"{label} : ce ComfyUI n'a pas les noeuds suivants, et le workflow en depend :\n"
+                        f"{details}\n"
+                        "Installe les extensions correspondantes, ou lance cette file depuis la machine "
+                        "qui a les modeles et les noeuds H3."
+                    )
             try:
                 result = queue_prompt(args.server, workflow, client_id)
             except urllib.error.HTTPError as exc:
