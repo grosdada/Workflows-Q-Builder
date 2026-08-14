@@ -194,6 +194,11 @@
     body.mode-h3:not(.engine-t2v) .h3t2v-only { display: none !important; }
     body.mode-h3.engine-director .prompt-only { display: none !important; }
 
+    /* LTX 2.5 pilote sa resolution par megapixels (ResolutionSelector), LTX 2.3
+       par une taille en pixels : on n'affiche que le reglage qui agit vraiment. */
+    body:not(.ltx-25) .ltx25-only { display: none !important; }
+    body.ltx-25 .ltx23-only { display: none !important; }
+
     .h3-panel {
       display: grid;
       gap: 12px;
@@ -963,10 +968,14 @@
                 <option value="21:9">21:9</option>
               </select>
             </label>
-            <label>
+            <label class="ltx23-only">
               Size
               <select id="sizePreset"></select>
               <input id="videoSize" placeholder="Custom size">
+            </label>
+            <label class="ltx25-only">
+              Megapixels
+              <input id="ltxMegapixels" type="number" min="0.1" max="4" step="0.05" value="0.7">
             </label>
             <label>
               Seed
@@ -1155,6 +1164,7 @@
       "Workflow": "Workflow",
       "Format ratio": "Format ratio",
       "Size": "Size",
+      "Megapixels ": "Megapixels ",
       "Seed": "Seed",
       "Workflow charge": "Loaded workflow",
       "Generer": "Generate",
@@ -2316,11 +2326,53 @@
       if (frameCount && (Number(frameCount) - 1) % 8 !== 0) {
         return "LTX 2.5 demande un frame count de type 8n+1: 97, 121, 153, 193 ou 241.";
       }
-      const parts = parseSizeParts(size);
-      if (parts && (parts.width % 32 !== 0 || parts.height % 32 !== 0)) {
-        return "LTX 2.5 demande une taille divisible par 32, par exemple 1280x704, 1536x864 ou 704x1280.";
-      }
+      // La taille n'est plus envoyee en 2.5 : le ResolutionSelector s'en charge
+      // et arrondit lui-meme au multiple de 32. Rien a valider ici.
       return "";
+    }
+
+    // Presets de workflow par version : melanger les deux listes n'a aucun sens,
+    // un workflow 2.3 lance en 2.5 (ou l'inverse) part directement a l'echec.
+    const WORKFLOW_PRESETS = {
+      "2.5": [
+        ["ltx25_t2v", "LTX 2.5 T2V"],
+        ["ltx25_i2v", "LTX 2.5 I2V"],
+        ["ltx25_flf2v", "LTX 2.5 FLF2V"]
+      ],
+      "2.3": [
+        ["t2v", "LTX 2.3 T2V"],
+        ["fast", "LTX 2.3 I2V fast"],
+        ["video_i2v_hq", "LTX 2.3 I2V quality"]
+      ]
+    };
+
+    // Valeurs exactes de l'enum aspect_ratio de ComfyUI. Une chaine approximative
+    // ("16:9" seul) n'est refusee qu'au RUN, apres la mise en file.
+    const ASPECT_ENUM = {
+      "1:1": "1:1 (Square)",
+      "2:3": "2:3 (Portrait Photo)",
+      "3:2": "3:2 (Photo)",
+      "3:4": "3:4 (Portrait Standard)",
+      "4:3": "4:3 (Standard)",
+      "9:16": "9:16 (Portrait Widescreen)",
+      "16:9": "16:9 (Widescreen)",
+      "21:9": "21:9 (Ultrawide)"
+    };
+
+    function refreshWorkflowPresets() {
+      const select = document.querySelector("#workflowPreset");
+      const previous = select.value;
+      const list = WORKFLOW_PRESETS[getLtxVersion()] || WORKFLOW_PRESETS["2.5"];
+      select.innerHTML = list.map(([value, label]) => `<option value="${value}">${label}</option>`).join("")
+        + `<option value="load">Custom workflow...</option>`;
+      const values = list.map(([value]) => value).concat("load");
+      if (values.includes(previous)) {
+        select.value = previous;
+      } else {
+        // Changement de version : on retombe sur I2V ou T2V selon qu'une image
+        // est liee, plutot que sur un preset de l'autre version.
+        select.value = hasAnyLinkedImage() ? values[1] : values[0];
+      }
     }
 
     function resolveWorkflow() {
@@ -2411,9 +2463,17 @@
       const workflowPresetValue = document.querySelector("#workflowPreset").value;
       const descriptionCount = promptRows.filter(row => row.positive.includes("Image description:")).length;
       const workflowLabel = workflowPresetValue === "load" ? "Workflow charge" : "Preset";
+      // En LTX 2.5 la taille vient du ResolutionSelector (ratio + megapixels) :
+      // les champs Width/Height du graphe en sont les SORTIES, donc envoyer une
+      // taille en pixels n'aurait aucun effet.
+      const ratio = document.querySelector("#formatPreset").value;
+      const aspectRatio = isLtx25() ? (ASPECT_ENUM[ratio] || "") : "";
+      const megapixels = isLtx25()
+        ? (Number(document.querySelector("#ltxMegapixels").value) || 0.7)
+        : null;
       const overrides = [
         frameCount ? `frames ${frameCount}` : "",
-        size ? `size ${size}` : "",
+        isLtx25() ? `${ratio} a ${megapixels} MP` : (size ? `size ${size}` : ""),
         noiseSeed ? `seed ${noiseSeed}+` : ""
       ].filter(Boolean).join(", ") || "preset";
       const versionHint = isLtx25() ? "LTX 2.5: prompts en paragraphe continu. " : "";
@@ -2421,7 +2481,9 @@
       const json = JSON.stringify(promptRows, null, 2);
       const overrideArgs = [
         frameCount ? `--frame-count ${frameCount}` : "",
-        size ? `--size ${psSingleQuoted(size)}` : "",
+        !isLtx25() && size ? `--size ${psSingleQuoted(size)}` : "",
+        aspectRatio ? `--aspect-ratio ${psSingleQuoted(aspectRatio)}` : "",
+        megapixels ? `--megapixels ${megapixels}` : "",
         noiseSeed ? `--noise-seed ${noiseSeed}` : ""
       ].filter(Boolean).join(" ");
       return [
@@ -2833,22 +2895,10 @@
       }
     }
     function syncLtxVersionUi() {
-      const frame = document.querySelector("#frameCount");
-      const size = document.querySelector("#videoSize");
-      const preset = document.querySelector("#workflowPreset");
-      if (isLtx25()) {
-        frame.placeholder = "Custom frame";
-        size.placeholder = "Custom size";
-        if (["t2v", "fast", "video_i2v_hq"].includes(preset.value)) {
-          preset.value = hasAnyLinkedImage() ? "ltx25_i2v" : "ltx25_t2v";
-        }
-      } else {
-        frame.placeholder = "Custom frame";
-        size.placeholder = "Custom size";
-        if (["ltx25_t2v", "ltx25_i2v", "ltx25_flf2v"].includes(preset.value)) {
-          preset.value = hasAnyLinkedImage() ? "fast" : "t2v";
-        }
-      }
+      document.body.classList.toggle("ltx-25", isLtx25());
+      // La liste des presets ne contient que ceux de la version choisie : plus
+      // moyen de lancer un workflow 2.3 en croyant etre en 2.5.
+      refreshWorkflowPresets();
       refreshSizeOptions(false);
       syncLoadWorkflowVisibility();
       document.querySelector("#command").value = buildCommand();
@@ -2959,6 +3009,10 @@
       } finally {
         event.target.value = "";
       }
+    });
+
+    document.querySelector("#ltxMegapixels").addEventListener("input", () => {
+      document.querySelector("#command").value = buildCommand();
     });
 
     ["#frameCount", "#videoSize", "#noiseSeed"].forEach(selector => {

@@ -15,6 +15,7 @@ import json
 import mimetypes
 import shutil
 import socket
+import ssl
 import sys
 import tempfile
 import threading
@@ -91,12 +92,53 @@ def read_version():
         return {}
 
 
+def explain_network_error(exc):
+    """Message lisible pour les pannes reseau qui reviennent.
+
+    « CERTIFICATE_VERIFY_FAILED » ne dit rien a qui l'attrape : sans un mot
+    d'explication, on cherche du cote du depot ou du pare-feu alors que le
+    probleme est le magasin de racines de Windows. Voir ssl_context().
+    """
+    text = str(exc)
+    if "CERTIFICATE_VERIFY_FAILED" in text:
+        return (f"{text} — le magasin de certificats de Windows n'a pas la racine "
+                "qui signe github.com. Ouvrir https://github.com dans un navigateur "
+                "une fois (Windows telecharge alors la racine manquante), puis "
+                "relancer le serveur et reessayer.")
+    return text
+
+
+def ssl_context():
+    """Contexte TLS pour joindre GitHub, avec un magasin de secours.
+
+    Sous Windows, Python lit le magasin de certificats de la machine tel qu'il
+    est, alors que les navigateurs (et PowerShell) font telecharger a Windows la
+    racine manquante au moment ou ils en ont besoin. Sur un poste qui n'a encore
+    jamais visite de site signe par cette racine, le magasin ne la contient pas
+    et Python echoue en CERTIFICATE_VERIFY_FAILED / unable to get local issuer
+    certificate — pendant que le navigateur ouvre github.com sans broncher.
+
+    Vu en vrai : github.com sert un certificat ECDSA signe par « Sectigo Public
+    Server Authentication CA DV E36 », dont la racine « USERTrust ECC
+    Certification Authority » etait absente du magasin de la machine.
+
+    On prefere donc le paquet de racines de certifi quand il est installe (c'est
+    le cas du Python embarque de ComfyUI, qui l'a via requests). Sinon on repart
+    sur le magasin systeme, qui suffit des que Windows a fait sa mise a jour.
+    """
+    try:
+        import certifi
+    except ImportError:
+        return ssl.create_default_context()
+    return ssl.create_default_context(cafile=certifi.where())
+
+
 def github_json(url):
     request = urllib.request.Request(url, headers={
         "User-Agent": "WorkflowsQBuilder",
         "Accept": "application/vnd.github+json",
     })
-    with urllib.request.urlopen(request, timeout=20) as response:
+    with urllib.request.urlopen(request, timeout=20, context=ssl_context()) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
@@ -146,7 +188,7 @@ def install_update():
     repo = update_repo()
     url = f"https://codeload.github.com/{repo}/zip/refs/heads/{DEFAULT_BRANCH}"
     request = urllib.request.Request(url, headers={"User-Agent": "WorkflowsQBuilder"})
-    with urllib.request.urlopen(request, timeout=120) as response:
+    with urllib.request.urlopen(request, timeout=120, context=ssl_context()) as response:
         payload = response.read()
 
     backup = ROOT / "_backup_previous"
@@ -289,7 +331,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             latest = latest_commit()
         except (urllib.error.URLError, urllib.error.HTTPError, ValueError, KeyError) as exc:
-            self.send_json({"error": f"Depot injoignable: {exc}", "repo": update_repo()}, 502)
+            self.send_json({"error": f"Depot injoignable: {explain_network_error(exc)}",
+                            "repo": update_repo()}, 502)
             return
         self.send_json({
             "repo": update_repo(),
@@ -305,7 +348,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             result = install_update()
         except (urllib.error.URLError, urllib.error.HTTPError, OSError, RuntimeError, zipfile.BadZipFile) as exc:
-            self.send_json({"error": f"Mise a jour impossible: {exc}"}, 502)
+            self.send_json({"error": f"Mise a jour impossible: {explain_network_error(exc)}"}, 502)
             return
         self.send_json(result)
 

@@ -45,9 +45,11 @@ _backup_previous/               version precedente, ecrite par la mise a jour, n
 
 ## Comment ca tourne
 
-`Lancer_Workflows_Q_Builder.bat` cherche un Python (PATH, puis le lanceur `py`,
-puis un chemin ecrit dans `python_path.txt`), lance le serveur sur le port 8765 et
-ouvre le navigateur.
+`Lancer_Workflows_Q_Builder.bat` cherche un Python (un chemin ecrit dans
+`python_path.txt`, puis le lanceur `py`, puis le PATH), lance le serveur sur le
+port 8765 et ouvre le navigateur. Chaque candidat est **execute** pour verifier
+qu'il repond en Python 3, jamais juste cherche — voir le piege du raccourci
+Microsoft Store plus bas.
 
 Le serveur refuse de demarrer si le port est deja pris. C'est voulu : sous Windows
 deux serveurs peuvent se poser sur le meme port sans erreur, et c'est le plus
@@ -120,6 +122,28 @@ L'app doit tourner depuis n'importe quel dossier, sur n'importe quelle machine.
   lit plus que la ligne `Content-Disposition`.
 - **`seed_control` n'existe pas** dans l'Export (API) du noeud Director : c'est le
   widget UI `control_after_generate`. Ne pas le patcher.
+- **Le magasin de certificats de Windows se remplit a la demande.** Update
+  echouait en `CERTIFICATE_VERIFY_FAILED / unable to get local issuer certificate`
+  alors que github.com s'ouvrait sans probleme dans le navigateur. Les clients
+  Windows (navigateur, PowerShell) font telecharger a Windows la racine manquante
+  au moment ou ils en ont besoin ; Python lit le magasin tel quel et echoue. En
+  l'occurrence github.com sert un certificat ECDSA signe par « Sectigo Public
+  Server Authentication CA DV E36 », dont la racine « USERTrust ECC Certification
+  Authority » n'etait pas encore dans le magasin. `ssl_context()` prefere donc les
+  racines de `certifi` quand il est installe — c'est le cas du Python embarque de
+  ComfyUI, qui l'a via requests. Depannage sans certifi : ouvrir github.com une
+  fois dans un navigateur, Windows recupere la racine.
+- **Windows 10/11 livre un faux `python.exe` dans le PATH.** C'est le raccourci
+  vers le Microsoft Store, place dans `%LOCALAPPDATA%\Microsoft\WindowsApps`. Il
+  existe meme quand Python n'est pas installe : `where python` le trouve et repond
+  0, mais l'executer n'affiche que « Python est introuvable ; executez sans
+  arguments a installer a partir du Microsoft Store ». Le `.bat` concluait « Python
+  trouve », lancait le serveur avec ce stub, et le poste neuf ne voyait que « Le
+  serveur s'est arrete avec une erreur » — le message d'aide et le repli sur
+  `python_path.txt` n'etaient jamais atteints. Ne jamais tester la presence d'un
+  interpreteur : le lancer avec `-c "import sys; assert sys.version_info[0] == 3"`
+  et ne le retenir que s'il repond. Meme test pour `py -3` et pour le chemin de
+  `python_path.txt`, qui peut pointer vers un python.exe deplace ou supprime.
 
 ## Charger une page HTML de prompts
 
