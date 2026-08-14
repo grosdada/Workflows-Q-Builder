@@ -1391,13 +1391,18 @@
       ["le serveur n'a pas renvoye de dossier", "the server returned no folder"],
       ["reponse ", "response "],
       ["Rien a synchroniser avant de lancer.", "Nothing to sync before running."],
+      ["Le serveur qui tourne est plus ancien que cette page : ferme la fenetre noire et relance le .bat.",
+       "The running server is older than this page: close the black window and start the .bat again."],
       ["Copie en cours...", "Copying..."],
       ["Copiee dans ComfyUI:", "Copied into ComfyUI:"],
       ["Copiee dans le dossier de l'app:", "Copied into the app folder:"],
       ["Trouvee dans ComfyUI:", "Found in ComfyUI:"],
       ["Aucune image nommee", "No image named"],
-      ["dans musedirector. Utilise le bouton Image, ou copie-la toi-meme.",
-       "in musedirector. Use the Image button, or copy it yourself."],
+      ["dans musedirector. Colle son chemin complet, ou utilise le bouton Image.",
+       "in musedirector. Paste its full path, or use the Image button."],
+      ["Aucun fichier a ce chemin:", "No file at this path:"],
+      ["Ce n'est pas une image:", "Not an image:"],
+      ["nom du fichier, ou colle un chemin complet", "file name, or paste a full path"],
       ["decrite par", "described by"],
       ["Ref ", "Ref "],
       ["Image copiee dans ComfyUI:", "Image copied into ComfyUI:"],
@@ -1884,7 +1889,7 @@
         <div class="h3-ref-row" data-index="${index}">
           <div class="ref-num">${index + 1}</div>
           <div class="ref-cell">
-            <input class="h3-ref-file" data-index="${index}" placeholder="perso${index + 1}.png">
+            <input class="h3-ref-file" data-index="${index}" placeholder="nom du fichier, ou colle un chemin complet">
             <button type="button" class="ref-pick" title="Choisir une image et la deposer dans ComfyUI">Image</button>
             <input type="file" class="h3-ref-input" accept="image/*" hidden>
           </div>
@@ -3231,6 +3236,15 @@
       return `/api/ref-image?name=${encodeURIComponent(name)}&project=${encodeURIComponent(h3ProjectName())}`;
     }
 
+    // Une route inconnue veut dire que le serveur en memoire est plus ancien que
+    // la page : apres une mise a jour, tant que le .bat n'a pas ete relance,
+    // l'ancien serveur repond encore. Sans ce message, le bouton semble mort.
+    function serverTooOld(response) {
+      return response.status === 404
+        ? new Error("Le serveur qui tourne est plus ancien que cette page : ferme la fenetre noire et relance le .bat.")
+        : null;
+    }
+
     document.querySelector("#h3Refs").addEventListener("click", (event) => {
       const pick = event.target.closest(".ref-pick");
       if (pick) {
@@ -3286,6 +3300,8 @@
         form.append("image", file);
         form.append("project", h3ProjectName());
         const response = await fetch("/api/h3-ref-upload", { method: "POST", body: form });
+        const stale = serverTooOld(response);
+        if (stale) throw stale;
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || `copie impossible (${response.status})`);
         row.querySelector(".h3-ref-file").value = data.filename;
@@ -3308,28 +3324,65 @@
       }
     });
 
-    // Nom tape a la main : on va voir si une image porte ce nom la ou ComfyUI
-    // regardera. Sans ca, une faute de frappe ne se voyait qu'au RUN.
-    document.querySelector("#h3Refs").addEventListener("change", async (event) => {
-      if (!event.target.classList.contains("h3-ref-file")) return;
-      const row = event.target.closest(".h3-ref-row");
-      const name = event.target.value.trim();
-      if (!name || !location.protocol.startsWith("http")) {
+    // Champ rempli a la main. Deux cas : un chemin complet, qu'on va chercher
+    // sur le disque et deposer dans ComfyUI ; un simple nom, qu'on verifie la
+    // ou ComfyUI regardera. Avant, taper quoi que ce soit ne declenchait rien.
+    async function handleTypedRefName(row, input) {
+      const value = input.value.trim().replace(/^"+|"+$/g, "");
+      if (!value || !location.protocol.startsWith("http")) {
         setRefState(row, "");
         return;
       }
+      const looksLikePath = /[\\/]/.test(value) || /^[A-Za-z]:/.test(value);
+      const button = row.querySelector(".ref-pick");
       try {
-        const response = await fetch(refImageUrl(name), { method: "GET" });
-        if (response.ok) {
-          setRefState(row, `Trouvee dans ComfyUI: ${name}`, "ok");
-          row.querySelector(".ref-pick").classList.add("done");
-        } else {
-          setRefState(row, `Aucune image nommee ${name} dans musedirector. Utilise le bouton Image, ou copie-la toi-meme.`, "warn");
-          row.querySelector(".ref-pick").classList.remove("done");
+        if (looksLikePath) {
+          setRefState(row, "Copie en cours...");
+          const response = await fetch("/api/h3-ref-import", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: value, project: h3ProjectName() })
+          });
+          const stale = serverTooOld(response);
+          if (stale) throw stale;
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || `import impossible (${response.status})`);
+          input.value = data.filename;
+          button.classList.add("done");
+          const message = data.in_comfy
+            ? `Copiee dans ComfyUI: ${data.subfolder}/${data.filename}. Rien a synchroniser avant de lancer.`
+            : `Copiee dans le dossier de l'app: ${data.filename}. Renseigne comfy_input dans local_settings.json pour qu'elle aille directement dans ComfyUI.`;
+          setRefState(row, message, data.in_comfy ? "ok" : "warn");
+          updateH3Hint();
+          document.querySelector("#command").value = buildCommand();
+          return;
         }
-      } catch {
-        setRefState(row, "");
+        const response = await fetch(refImageUrl(value));
+        if (response.ok) {
+          setRefState(row, `Trouvee dans ComfyUI: ${value}`, "ok");
+          button.classList.add("done");
+        } else {
+          setRefState(row, `Aucune image nommee ${value} dans musedirector. Colle son chemin complet, ou utilise le bouton Image.`, "warn");
+          button.classList.remove("done");
+        }
+      } catch (error) {
+        setRefState(row, error.message, "warn");
+        button.classList.remove("done");
       }
+    }
+
+    document.querySelector("#h3Refs").addEventListener("change", (event) => {
+      if (!event.target.classList.contains("h3-ref-file")) return;
+      handleTypedRefName(event.target.closest(".h3-ref-row"), event.target);
+    });
+
+    // change ne part qu'a la sortie du champ : un collage suivi d'un clic
+    // ailleurs le declenche, mais pas un collage suivi d'une pause. On rattrape
+    // le collage explicitement.
+    document.querySelector("#h3Refs").addEventListener("paste", (event) => {
+      const input = event.target.closest(".h3-ref-file");
+      if (!input) return;
+      setTimeout(() => handleTypedRefName(input.closest(".h3-ref-row"), input), 50);
     });
 
     document.querySelector("#h3Refs").addEventListener("click", async (event) => {

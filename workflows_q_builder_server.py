@@ -345,7 +345,66 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/h3-ref-upload":
             self.handle_h3_ref_upload()
             return
+        if parsed.path == "/api/h3-ref-import":
+            self.handle_h3_ref_import()
+            return
         self.send_error(404)
+
+    def read_json_body(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        if not length:
+            return {}
+        try:
+            return json.loads(self.rfile.read(length).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            return {}
+
+    def handle_h3_ref_import(self):
+        """Reprend une image designee par son chemin sur le disque.
+
+        Coller un chemin est le geste naturel quand on a deja ses references
+        rangees quelque part : l'app va chercher le fichier elle-meme plutot que
+        d'exiger un passage par le selecteur, et ne garde que le nom dans le
+        champ — c'est ce que le noeud Director attend.
+        """
+        payload = self.read_json_body()
+        raw_path = (payload.get("path") or "").strip().strip('"')
+        project = Path((payload.get("project") or "").strip()).name
+        if not raw_path:
+            self.send_json({"error": "Chemin vide"}, 400)
+            return
+
+        source = Path(raw_path).expanduser()
+        if not source.is_file():
+            self.send_json({"error": f"Aucun fichier a ce chemin: {source}"}, 404)
+            return
+        if source.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp", ".bmp"):
+            self.send_json({"error": f"Ce n'est pas une image: {source.name}"}, 400)
+            return
+
+        comfy_input = local_settings().get("comfy_input", "")
+        if comfy_input and Path(comfy_input).is_dir():
+            target_dir = Path(comfy_input) / "musedirector" / project if project else Path(comfy_input) / "musedirector"
+            placed_in_comfy = True
+        else:
+            target_dir = UPLOAD_DIR
+            placed_in_comfy = False
+
+        try:
+            target_dir.mkdir(parents=True, exist_ok=True)
+            target = target_dir / source.name
+            if target.resolve() != source.resolve():
+                shutil.copy2(source, target)
+        except OSError as exc:
+            self.send_json({"error": f"Copie impossible vers {target_dir}: {exc}"}, 500)
+            return
+
+        self.send_json({
+            "filename": source.name,
+            "path": str(target),
+            "in_comfy": placed_in_comfy,
+            "subfolder": f"musedirector/{project}" if project else "musedirector",
+        })
 
     def handle_h3_ref_upload(self):
         """Depose une image de reference la ou ComfyUI ira la chercher.
