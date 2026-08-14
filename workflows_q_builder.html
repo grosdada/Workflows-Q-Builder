@@ -110,6 +110,21 @@
       color: var(--on-accent);
     }
 
+    #updateButton {
+      min-height: 34px;
+      padding: 6px 12px;
+      font-size: 12px;
+      background: var(--panel);
+    }
+
+    #updateButton.available {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--on-accent);
+    }
+
+    #updateButton.busy { opacity: 0.6; }
+
     .icon-button {
       min-height: 34px;
       width: 38px;
@@ -602,6 +617,7 @@
         <p class="sub">Prepare des files multi-shots LTX et MiniMax H3, et genere la commande PowerShell pour ComfyUI.</p>
       </div>
       <div class="header-controls">
+        <button type="button" id="updateButton" title="Chercher une mise a jour">Update</button>
         <div class="lang-switch" role="group" aria-label="Langue">
           <button type="button" class="lang-option active" data-lang="fr">FR</button>
           <button type="button" class="lang-option" data-lang="en">EN</button>
@@ -1148,6 +1164,9 @@
       "No image": "No image",
       "Prompt": "Prompt",
       "Theme clair / sombre": "Light / dark theme",
+      "Chercher une mise a jour": "Check for an update",
+      "Installation de la mise a jour...": "Installing the update...",
+      "Rien a remplacer : les fichiers etaient deja identiques.": "Nothing to replace: the files were already identical.",
       // placeholders
       "Decris la scene, le style, les points de vue, le rythme, ce qu'il faut eviter...":
         "Describe the scene, the style, the angles, the pacing, what to avoid...",
@@ -1222,6 +1241,19 @@
       ["a du dialogue sans locuteur : la voix ne sera attribuee a personne", "has dialogue without a speaker: the voice will not be attributed"],
       ["sans image alors qu'une Ref plus loin en a une : la numerotation des Subject glisse",
        "has no image while a later Ref does: the Subject numbering shifts"],
+      ["Des scripts Python ont change : ferme la fenetre noire du serveur et relance le .bat.",
+       "Python scripts changed: close the server's black window and run the .bat again."],
+      ["Recharge la page avec Ctrl+F5 pour voir les changements.", "Reload the page with Ctrl+F5 to see the changes."],
+      ["L'ancienne version est sauvegardee dans _backup_previous.", "The previous version is saved in _backup_previous."],
+      ["Ferme la fenetre noire et relance le .bat pour appliquer.", "Close the black window and run the .bat again to apply."],
+      ["Reclique sur Update pour l'installer.", "Click Update again to install it."],
+      ["Mise a jour disponible", "Update available"],
+      ["Mise a jour installee:", "Update installed:"],
+      ["fichier(s) mis a jour.", "file(s) updated."],
+      ["Recharge la page (Ctrl+F5).", "Reload the page (Ctrl+F5)."],
+      ["Deja a jour", "Already up to date"],
+      ["Depot injoignable:", "Repository unreachable:"],
+      ["Mise a jour impossible:", "Update failed:"],
       ["prompt(s) contiennent bien les coupes.", "prompt(s) do contain the cuts."],
       ["plans par scene,", "shots per scene,"],
       ["Multishot:", "Multishot:"],
@@ -3149,6 +3181,80 @@
     // chargement, elle restait invisible : l'app reclamait une cle sans
     // proposer nulle part ou la saisir.
     document.querySelector("#apiRow").classList.toggle("active", document.querySelector("#aiMode").value === "api");
+
+    /* ----------------------------------------------------- mise a jour */
+
+    // Deux temps volontairement : un clic verifie, un second installe. Ecraser
+    // les fichiers de l'app sans confirmation serait le genre de surprise qui
+    // arrive au pire moment, au milieu d'une file en preparation.
+    let updateReady = null;
+
+    async function checkForUpdate({ silent = false } = {}) {
+      const button = document.querySelector("#updateButton");
+      button.classList.add("busy");
+      try {
+        const response = await fetch("/api/update-check");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "verification impossible");
+        updateReady = data.behind ? data : null;
+        button.classList.toggle("available", !!data.behind);
+        button.textContent = data.behind ? "Update !" : "Update";
+        if (!silent) {
+          setStatus("#askStatus", data.behind
+            ? `Mise a jour disponible (${data.latest.sha} du ${(data.latest.date || "").slice(0, 10)}) : ${data.latest.message}. Reclique sur Update pour l'installer.`
+            : `Deja a jour (${data.latest.sha}).`);
+        }
+        return data;
+      } catch (error) {
+        if (!silent) setStatus("#askStatus", `Update: ${error.message}`, true);
+        return null;
+      } finally {
+        button.classList.remove("busy");
+      }
+    }
+
+    async function installUpdate() {
+      const button = document.querySelector("#updateButton");
+      button.classList.add("busy");
+      setStatus("#askStatus", "Installation de la mise a jour...");
+      try {
+        const response = await fetch("/api/update", { method: "POST" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "installation impossible");
+        updateReady = null;
+        button.classList.remove("available");
+        button.textContent = "Update";
+        const count = data.updated.length;
+        if (!count) {
+          setStatus("#askStatus", "Rien a remplacer : les fichiers etaient deja identiques.");
+          return;
+        }
+        setStatus("#askStatus", data.needs_restart
+          ? `${count} fichier(s) mis a jour. Ferme la fenetre noire et relance le .bat pour appliquer.`
+          : `${count} fichier(s) mis a jour. Recharge la page (Ctrl+F5).`);
+        alert(t(`Mise a jour installee: ${count} fichier(s).\n\n`)
+          + t(data.needs_restart
+            ? "Des scripts Python ont change : ferme la fenetre noire du serveur et relance le .bat."
+            : "Recharge la page avec Ctrl+F5 pour voir les changements.")
+          + t("\n\nL'ancienne version est sauvegardee dans _backup_previous."));
+      } catch (error) {
+        setStatus("#askStatus", `Update: ${error.message}`, true);
+      } finally {
+        button.classList.remove("busy");
+      }
+    }
+
+    document.querySelector("#updateButton").addEventListener("click", async () => {
+      if (updateReady) {
+        await installUpdate();
+        return;
+      }
+      const data = await checkForUpdate();
+      // Premiere installation copiee a la main : pas de VERSION.json, donc on
+      // propose directement l'installation plutot que de demander deux clics
+      // pour rien.
+      if (data && data.behind && !data.current.sha) await installUpdate();
+    });
 
     document.querySelectorAll(".lang-option").forEach(button => {
       button.addEventListener("click", () => applyLanguage(button.dataset.lang));

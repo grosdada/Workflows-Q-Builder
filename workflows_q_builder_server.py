@@ -13,12 +13,17 @@ renvoyait 404 silencieusement, donc la detection ne marchait jamais).
 import argparse
 import json
 import mimetypes
+import shutil
 import socket
 import sys
+import tempfile
 import threading
 import time
+import urllib.error
+import urllib.request
 import uuid
 import webbrowser
+import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -54,6 +59,114 @@ def local_settings():
         return {}
     allowed = ("workflow_browse_path", "comfy_server", "comfy_input")
     return {key: data[key] for key in allowed if isinstance(data.get(key), str) and data[key]}
+
+
+# Depot public de reference. Surchargeable par "update_repo" dans
+# local_settings.json, pour pointer un fork sans toucher au code.
+DEFAULT_REPO = "grosdada/workflows-q-builder"
+DEFAULT_BRANCH = "main"
+
+# Jamais ecrases par une mise a jour : ce sont les fichiers de cette machine.
+UPDATE_SKIP = {
+    "local_settings.json", "comfy_input.txt", "python_path.txt",
+    "ltx_custom_queue.json", "h3_custom_queue.json", "h3_t2v_queue.json",
+}
+UPDATE_SKIP_DIRS = {
+    "ltx_builder_uploads", "ltx_builder_workflows", "h3_workflows",
+    "__pycache__", ".git", "_backup_previous",
+}
+
+
+def update_repo():
+    return local_settings().get("update_repo") or DEFAULT_REPO
+
+
+def read_version():
+    path = ROOT / "VERSION.json"
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def github_json(url):
+    request = urllib.request.Request(url, headers={
+        "User-Agent": "WorkflowsQBuilder",
+        "Accept": "application/vnd.github+json",
+    })
+    with urllib.request.urlopen(request, timeout=20) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def latest_commit():
+    repo = update_repo()
+    data = github_json(f"https://api.github.com/repos/{repo}/commits/{DEFAULT_BRANCH}")
+    commit = data.get("commit", {})
+    return {
+        "sha": (data.get("sha") or "")[:7],
+        "date": (commit.get("committer") or {}).get("date", ""),
+        "message": (commit.get("message") or "").splitlines()[0] if commit.get("message") else "",
+    }
+
+
+def install_update():
+    """Telecharge l'archive de la branche et remplace les fichiers de l'app.
+
+    On ne supprime jamais rien : un fichier disparu du depot reste en place.
+    Le remplacement est precede d'une sauvegarde dans _backup_previous, pour
+    pouvoir revenir en arriere sans reseau si une version casse quelque chose.
+    """
+    repo = update_repo()
+    url = f"https://codeload.github.com/{repo}/zip/refs/heads/{DEFAULT_BRANCH}"
+    request = urllib.request.Request(url, headers={"User-Agent": "WorkflowsQBuilder"})
+    with urllib.request.urlopen(request, timeout=120) as response:
+        payload = response.read()
+
+    backup = ROOT / "_backup_previous"
+    if backup.exists():
+        shutil.rmtree(backup, ignore_errors=True)
+    backup.mkdir(exist_ok=True)
+
+    updated = []
+    with tempfile.TemporaryDirectory() as tmp:
+        archive = Path(tmp) / "update.zip"
+        archive.write_bytes(payload)
+        with zipfile.ZipFile(archive) as zf:
+            zf.extractall(Path(tmp) / "extracted")
+        roots = [item for item in (Path(tmp) / "extracted").iterdir() if item.is_dir()]
+        if len(roots) != 1:
+            raise RuntimeError("archive inattendue : pas de dossier racine unique")
+        source = roots[0]
+
+        for item in source.rglob("*"):
+            if not item.is_file():
+                continue
+            relative = item.relative_to(source)
+            if relative.name in UPDATE_SKIP:
+                continue
+            if set(relative.parts) & UPDATE_SKIP_DIRS:
+                continue
+            target = ROOT / relative
+            new_bytes = item.read_bytes()
+            if target.exists() and target.read_bytes() == new_bytes:
+                continue
+            if target.exists():
+                saved = backup / relative
+                saved.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(target, saved)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(new_bytes)
+            updated.append(str(relative))
+
+    version = latest_commit()
+    version["installed_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    (ROOT / "VERSION.json").write_text(json.dumps(version, indent=2), encoding="utf-8")
+    # Un .py mis a jour ne prend effet qu'au prochain demarrage : le serveur qui
+    # repond ici tourne encore sur l'ancien code.
+    needs_restart = any(name.endswith(".py") for name in updated)
+    return {"updated": updated, "version": version, "needs_restart": needs_restart}
 
 
 def port_taken(port):
@@ -118,6 +231,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/workflow-read":
             self.handle_workflow_read(parse_qs(parsed.query))
             return
+        if parsed.path == "/api/update-check":
+            self.handle_update_check()
+            return
         self.send_error(404)
 
     def do_POST(self):
@@ -128,7 +244,35 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/workflow-upload":
             self.handle_workflow_upload()
             return
+        if parsed.path == "/api/update":
+            self.handle_update()
+            return
         self.send_error(404)
+
+    def handle_update_check(self):
+        current = read_version()
+        try:
+            latest = latest_commit()
+        except (urllib.error.URLError, urllib.error.HTTPError, ValueError, KeyError) as exc:
+            self.send_json({"error": f"Depot injoignable: {exc}", "repo": update_repo()}, 502)
+            return
+        self.send_json({
+            "repo": update_repo(),
+            "current": current,
+            "latest": latest,
+            # Sans VERSION.json (installation copiee a la main), on ne peut pas
+            # savoir ou on en est : on propose la mise a jour plutot que de
+            # pretendre que tout est a jour.
+            "behind": current.get("sha") != latest.get("sha"),
+        })
+
+    def handle_update(self):
+        try:
+            result = install_update()
+        except (urllib.error.URLError, urllib.error.HTTPError, OSError, RuntimeError, zipfile.BadZipFile) as exc:
+            self.send_json({"error": f"Mise a jour impossible: {exc}"}, 502)
+            return
+        self.send_json(result)
 
     def read_multipart_file(self, expected_field):
         content_type = self.headers.get("Content-Type", "")
