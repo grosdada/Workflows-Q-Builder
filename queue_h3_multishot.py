@@ -27,14 +27,23 @@ construire au-dela, ce script ne contourne rien.
 import argparse
 import copy
 import json
+import os
 import re
+import sys
 import time
 import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
 
-import h3_director_build as director
+# Le Python embarque de ComfyUI est livre avec un fichier python311._pth qui
+# fixe les chemins de recherche et, contrairement a un Python normal, n'ajoute
+# PAS le dossier du script. Sans cette ligne, l'import ci-dessous echoue en
+# ModuleNotFoundError alors que le fichier est juste a cote — vecu sur un poste
+# sans Python installe, qui utilise donc l'interpreteur de ComfyUI.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import h3_director_build as director  # noqa: E402
 
 
 DIRECTOR_CLASS = "MuseMinimaxDirector"
