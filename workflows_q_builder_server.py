@@ -63,7 +63,7 @@ def local_settings():
 
 # Depot public de reference. Surchargeable par "update_repo" dans
 # local_settings.json, pour pointer un fork sans toucher au code.
-DEFAULT_REPO = "grosdada/workflows-q-builder"
+DEFAULT_REPO = "grosdada/Workflows-Q-Builder"
 DEFAULT_BRANCH = "main"
 
 # Jamais ecrases par une mise a jour : ce sont les fichiers de cette machine.
