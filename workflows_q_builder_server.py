@@ -457,9 +457,11 @@ def main():
     # un ancien ltx_builder_server.py oublie servirait l'ancienne interface
     # pendant que celle-ci tourne pour rien. On refuse plutot que de mentir.
     if port_taken(args.port):
-        print(f"Le port {args.port} est deja pris par un autre serveur (probablement "
-              f"ltx_builder_server.py laisse ouvert).")
-        print("Ferme sa fenetre, puis relance, ou lance celui-ci sur un autre port:")
+        print(f"Le port {args.port} est deja pris par un autre serveur : le plus souvent une "
+              f"instance de celui-ci restee ouverte dans une autre fenetre, sinon l'ancien "
+              f"ltx_builder_server.py.")
+        print(f"Ouvre http://{HOST}:{args.port}/ pour voir laquelle repond, ferme sa fenetre "
+              f"noire, puis relance. Ou lance celui-ci sur un autre port:")
         print(f"    python .\\{Path(__file__).name} --port {args.port + 1}")
         raise SystemExit(1)
 
