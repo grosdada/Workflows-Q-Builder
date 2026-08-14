@@ -20,6 +20,7 @@ import sys
 import tempfile
 import threading
 import time
+import traceback
 import urllib.error
 import urllib.request
 import uuid
@@ -290,6 +291,26 @@ class Handler(BaseHTTPRequestHandler):
         self.send_no_cache()
         self.end_headers()
         self.wfile.write(body)
+
+    def handle_one_request(self):
+        """Une erreur imprevue doit produire une reponse, pas un silence.
+
+        Sans ca, une exception non rattrapee dans un handler fait fermer la
+        connexion par socketserver : le navigateur n'affiche que « Failed to
+        fetch », sans rien qui indique la cause. On renvoie desormais l'erreur,
+        et on l'ecrit dans la fenetre du serveur.
+        """
+        try:
+            super().handle_one_request()
+        except (ConnectionError, TimeoutError):
+            raise
+        except Exception:
+            detail = traceback.format_exc()
+            print(detail)
+            try:
+                self.send_json({"error": f"Erreur interne du serveur: {detail.strip().splitlines()[-1]}"}, 500)
+            except Exception:
+                pass
 
     def do_GET(self):
         parsed = urlparse(self.path)
