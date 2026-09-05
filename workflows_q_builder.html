@@ -967,7 +967,7 @@
       </div>
       <label class="h3dir-only">
         Style line (injecte en tete de detailed_description)
-        <textarea id="h3StyleLine" placeholder="Photographie, lumiere, palette, energie camera. Le preset Camera / Style l'alimente automatiquement."></textarea>
+        <textarea id="h3StyleLine" placeholder="Style commun a toutes les scenes. Laisse vide si chaque plan a deja son propre style (champ Style override de la carte)."></textarea>
       </label>
       <div class="h3-grid-3 h3dir-only">
         <label>
@@ -1317,8 +1317,8 @@
       "Custom camera/style prompt": "Custom camera/style prompt",
       "Ex: E:\\H3-Comfy-Project\\mon-projet": "Ex: E:\\H3-Comfy-Project\\my-project",
       "Muse/Video/<projet>": "Muse/Video/<project>",
-      "Photographie, lumiere, palette, energie camera. Le preset Camera / Style l'alimente automatiquement.":
-        "Photography, light, palette, camera energy. The camera / style preset feeds this automatically.",
+      "Style commun a toutes les scenes. Laisse vide si chaque plan a deja son propre style (champ Style override de la carte).":
+        "Style shared by every scene. Leave empty when each shot already carries its own (the card's Style override field).",
       "N/A si rien": "N/A if none",
       "the setting: ...": "the setting: ...",
       "Custom frame": "Custom frame",
@@ -1446,6 +1446,9 @@
       ["avec image.", "with an image."],
       ["ligne ", "line "],
       ["prompt(s) charges depuis le HTML.", "prompt(s) loaded from the HTML."],
+      ["prompt(s) charges depuis le HTML,", "prompt(s) loaded from the HTML,"],
+      ["champ(s) remplis.", "field(s) filled."],
+      ["style(s) par plan repris dans Style override.", "per-shot style(s) loaded into Style override."],
       ["LTX 2.5: prompts en paragraphe continu.", "LTX 2.5: prompts as one flowing paragraph."],
       ["prompt(s) prets. Images liees:", "prompt(s) ready. Linked images:"],
       ["Template H3 charge:", "H3 template loaded:"],
@@ -3110,7 +3113,15 @@
         return;
       }
 
-      setStatus("#status", `${kept} prompt(s) charges depuis le HTML, ${filled} champ(s) remplis.`,
+      // Les styles par plan atterrissent dans « Style override », loin du champ
+      // Style line global : sans un mot ici, on croit le style perdu parce que
+      // le champ global, lui, reste vide.
+      const styled = shots.filter(shot => shot.querySelector(".shot-style")?.value === "custom"
+        && shot.querySelector(".shot-custom-style")?.value.trim()).length;
+      const styleNote = styled
+        ? ` ${styled} style(s) par plan repris dans Style override.`
+        : "";
+      setStatus("#status", `${kept} prompt(s) charges depuis le HTML, ${filled} champ(s) remplis.${styleNote}`,
         filled < kept);
     }
     async function stageShotImage(shot, file) {
