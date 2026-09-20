@@ -1631,8 +1631,14 @@
         label: "OpenAI",
         keyPlaceholder: "sk-...",
         keyPage: "platform.openai.com/api-keys",
-        fallbackModels: ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-4.1"],
-        defaultModel: "gpt-5.5"
+        // Secours si la liste en direct n'est pas disponible. Le bouton
+        // Rafraichir reste la verite : il ne montre que les modeles reels
+        // auxquels la cle API de cette personne a acces.
+        fallbackModels: [
+          "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6",
+          "gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-4.1"
+        ],
+        defaultModel: "gpt-5.6-terra"
       },
       anthropic: {
         label: "Anthropic (Claude)",
@@ -4187,7 +4193,6 @@
   </script>
 </body>
 </html>
-
 
 
 
