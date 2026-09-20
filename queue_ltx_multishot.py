@@ -1,13 +1,19 @@
-﻿import argparse
+import argparse
 import base64
 import copy
 import json
 import mimetypes
+import os
+import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from network_cluster import initial_loads, parse_servers, select_server
 
 
 DEFAULT_NEGATIVE = (
@@ -18,6 +24,108 @@ DEFAULT_NEGATIVE = (
 )
 
 
+
+
+def wait_prompt_result(server, prompt_id, timeout=86400, missing_grace=90):
+    """Attend la fin; retourne (succes, entree_history, raison)."""
+    server = server.rstrip("/")
+    deadline = time.time() + timeout
+    missing_since = None
+    last_error = ""
+    while time.time() < deadline:
+        entry = None
+        present_in_queue = False
+        try:
+            with urllib.request.urlopen(f"{server}/history/{prompt_id}", timeout=20) as response:
+                entry = json.loads(response.read().decode("utf-8")).get(prompt_id)
+            if entry:
+                status = entry.get("status") or {}
+                messages = status.get("messages") or []
+                error = next((msg for msg in messages if isinstance(msg, (list, tuple)) and msg and msg[0] == "execution_error"), None)
+                if error or status.get("status_str") == "error":
+                    return False, entry, "erreur d'execution ComfyUI"
+                if status.get("completed") or status.get("status_str") == "success" or entry.get("outputs"):
+                    return True, entry, "termine"
+                missing_since = None
+            else:
+                with urllib.request.urlopen(f"{server}/queue", timeout=20) as response:
+                    queue = json.loads(response.read().decode("utf-8"))
+                for key in ("queue_running", "queue_pending"):
+                    for item in queue.get(key) or []:
+                        if isinstance(item, list) and len(item) > 1 and item[1] == prompt_id:
+                            present_in_queue = True
+                            break
+                if present_in_queue:
+                    missing_since = None
+                elif missing_since is None:
+                    missing_since = time.time()
+        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            last_error = str(exc)
+            if missing_since is None:
+                missing_since = time.time()
+
+        if missing_since is not None and time.time() - missing_since >= missing_grace:
+            reason = "job absent de la file et de l'historique"
+            if last_error:
+                reason += f" ({last_error})"
+            return False, entry, reason
+        time.sleep(3)
+    return False, None, "delai d'attente depasse"
+
+
+def copy_prompt_outputs(server, prompt_id, destination, timeout=86400):
+    """Attend un prompt ComfyUI puis telecharge toutes ses sorties."""
+    server = server.rstrip("/")
+    deadline = time.time() + timeout
+    entry = None
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(f"{server}/history/{prompt_id}", timeout=30) as response:
+                history = json.loads(response.read().decode("utf-8"))
+        except urllib.error.URLError as exc:
+            print(f"  ! lecture du resultat impossible ({exc}), nouvel essai dans 5 s")
+            time.sleep(5)
+            continue
+        entry = history.get(prompt_id)
+        if entry:
+            status = entry.get("status") or {}
+            if status.get("completed") or entry.get("outputs"):
+                break
+            messages = status.get("messages") or []
+            if any(isinstance(msg, (list, tuple)) and msg and msg[0] == "execution_error" for msg in messages):
+                raise RuntimeError(f"Le rendu {prompt_id} a echoue dans ComfyUI.")
+        time.sleep(3)
+    else:
+        raise TimeoutError(f"Delai depasse en attendant le rendu {prompt_id}.")
+
+    destination = Path(destination).expanduser()
+    destination.mkdir(parents=True, exist_ok=True)
+    saved = []
+    for node_output in (entry.get("outputs") or {}).values():
+        if not isinstance(node_output, dict):
+            continue
+        for collection in ("images", "gifs", "videos", "audio"):
+            for item in node_output.get(collection) or []:
+                if not isinstance(item, dict) or not item.get("filename"):
+                    continue
+                query = urllib.parse.urlencode({
+                    "filename": item["filename"],
+                    "subfolder": item.get("subfolder", ""),
+                    "type": item.get("type", "output"),
+                })
+                target = destination / Path(item["filename"]).name
+                if target.exists():
+                    stem, suffix, n = target.stem, target.suffix, 2
+                    while target.exists():
+                        target = destination / f"{stem}_{n}{suffix}"
+                        n += 1
+                with urllib.request.urlopen(f"{server}/view?{query}", timeout=120) as response:
+                    target.write_bytes(response.read())
+                saved.append(target)
+                print(f"  -> resultat copie: {target}")
+    if not saved:
+        print(f"  ! rendu termine mais aucune sortie telechargeable trouvee: {prompt_id}")
+    return saved
 
 
 def ensure_api_workflow(workflow, workflow_path):
@@ -356,7 +464,7 @@ def upload_image_data(server, image_data, filename):
     return f"{result['subfolder']}/{result['name']}" if result.get("subfolder") else result["name"]
 
 
-def upload_image_path(server, image_path):
+def upload_image_path(server, image_path, subfolder="ltx_queue", overwrite="false"):
     path = Path(image_path)
     image_bytes = path.read_bytes()
     mime_type = mimetypes.guess_type(path.name)[0] or "image/png"
@@ -378,8 +486,8 @@ def upload_image_path(server, image_path):
     body = b"".join([
         part("image", image_bytes, mime_type, path.name),
         part("type", "input"),
-        part("subfolder", "ltx_queue"),
-        part("overwrite", "false"),
+        part("subfolder", subfolder),
+        part("overwrite", overwrite),
         f"--{boundary}--\r\n".encode("utf-8"),
     ])
 
@@ -440,6 +548,7 @@ def resolve_workflow_path(root, raw_path):
 def main():
     parser = argparse.ArgumentParser(description="Queue a list of LTX ComfyUI prompts.")
     parser.add_argument("--server", default="http://127.0.0.1:8188")
+    parser.add_argument("--servers", default="", help="Comma-separated ComfyUI servers; jobs go to the least loaded reachable node.")
     parser.add_argument("--workflow", default="ltx19b_i2v_quality_upscale_api.json")
     parser.add_argument("--prompts", default="ltx_custom_queue.json")
     parser.add_argument("--frame-count", type=int, default=None)
@@ -452,6 +561,7 @@ def main():
     parser.add_argument("--megapixels", type=float, default=None,
                         help="Optional ResolutionSelector megapixels, for example 0.9.")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--copy-results", default="", help="Attend les rendus et copie leurs sorties dans ce dossier.")
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parent
@@ -463,11 +573,18 @@ def main():
     base_workflow = json.loads(workflow_path.read_text(encoding="utf-8-sig"))
     ensure_api_workflow(base_workflow, workflow_path)
     prompts = json.loads(prompts_path.read_text(encoding="utf-8-sig"))
+    servers = parse_servers(args.server, args.servers)
+    try:
+        loads = {server: 0 for server in servers} if args.dry_run else initial_loads(servers)
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
+    print("ComfyUI target(s): " + ", ".join(loads))
     size_override = parse_size(args.size)
     client_id = str(uuid.uuid4())
 
     queued = []
     for index, shot in enumerate(prompts, start=1):
+        target_server = select_server(loads)
         workflow = copy.deepcopy(base_workflow)
         name = shot["name"]
         image_node_id, image_node = find_load_image_node(workflow)
@@ -481,10 +598,10 @@ def main():
         disable_prompt_enhance(workflow)
         image_name = shot.get("image")
         if shot.get("image_path"):
-            image_name = upload_image_path(args.server, shot["image_path"])
+            image_name = upload_image_path(target_server, shot["image_path"])
         if shot.get("image_data"):
             image_name = upload_image_data(
-                args.server,
+                target_server,
                 shot["image_data"],
                 shot.get("image_filename") or f"{name}.png",
             )
@@ -508,7 +625,7 @@ def main():
             continue
 
         try:
-            result = queue_prompt(args.server, workflow, client_id)
+            result = queue_prompt(target_server, workflow, client_id)
         except urllib.error.HTTPError as exc:
             # ComfyUI a repondu : il refuse le workflow et dit pourquoi dans le
             # corps de la reponse. L'afficher evite un diagnostic a l'aveugle.
@@ -522,17 +639,22 @@ def main():
                 "Verifie que ComfyUI a bien les noeuds et les modeles de ce workflow."
             ) from exc
         except urllib.error.URLError as exc:
-            raise SystemExit(f"Could not reach ComfyUI at {args.server}: {exc}") from exc
+            raise SystemExit(f"Could not reach ComfyUI at {target_server}: {exc}") from exc
 
         prompt_id = result.get("prompt_id", "unknown")
-        queued.append({"shot": name, "prompt_id": prompt_id})
-        print(f"Queued {index:02d} {name}: {prompt_id}")
+        queued.append({"shot": name, "prompt_id": prompt_id, "server": target_server})
+        print(f"Queued {index:02d} {name} on {target_server}: {prompt_id}")
         time.sleep(0.2)
 
     if queued:
         print("\nQueued shots:")
         for item in queued:
             print(f"- {item['shot']}: {item['prompt_id']}")
+    if queued and args.copy_results:
+        print(f"\nCopie des resultats vers: {Path(args.copy_results).expanduser()}")
+        for item in queued:
+            print(f"Attente de {item['shot']} sur {item['server']}...")
+            copy_prompt_outputs(item["server"], item["prompt_id"], args.copy_results)
 
 
 if __name__ == "__main__":

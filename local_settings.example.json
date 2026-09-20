@@ -1,5 +1,18 @@
 {
   "workflow_browse_path": "",
   "comfy_server": "http://127.0.0.1:8188",
-  "comfy_input": "C:\\\\ComfyUI\\\\input"
+  "comfy_input": "C:\\ComfyUI\\input",
+  "results_copy_path": "",
+  "comfy_nodes": [
+    {
+      "name": "PC-1",
+      "url": "http://192.168.1.10:8188",
+      "auto": true
+    },
+    {
+      "name": "PC-2",
+      "url": "http://192.168.1.11:8188",
+      "auto": true
+    }
+  ]
 }

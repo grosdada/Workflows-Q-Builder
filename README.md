@@ -56,6 +56,20 @@ diffère d'un poste à l'autre :
 
 Ce fichier n'est pas versionné et survit aux mises à jour.
 
+## Pilotage réseau
+
+`local_settings.json` peut contenir une liste `comfy_nodes`. L'interface affiche leur état et permet soit de viser une machine, soit de répartir automatiquement la file sur les nœuds joignables les moins chargés.
+
+```json
+"comfy_nodes": [
+  {"name": "PC-1", "url": "http://192.168.1.10:8188"},
+  {"name": "PC-2", "url": "http://192.168.1.11:8188"}
+]
+```
+
+Chaque ComfyUI distant doit être lancé avec `--listen 0.0.0.0` et rester limité au réseau privé. Les scripts acceptent toujours `--server` pour un seul PC, et désormais `--servers` avec une liste séparée par des virgules. Les images LTX/I2V sont envoyées au nœud choisi via son API avant le workflow.
+
+Q-builder peut tourner sur un poste de commande sans ComfyUI. Les références H3 sont alors conservées par l’app puis envoyées au worker choisi. Le drapeau uto active ou exclut chaque nœud de la répartition automatique. Une scène H3 qui échoue ou disparaît est réessayée une seule fois sur un autre worker. L’option **Copy results** attend les rendus et télécharge une copie des sorties dans le dossier choisi, sans supprimer les originaux des workers.
 ## Règles MiniMax H3 à ne pas contourner
 
 Elles viennent de plantages réels, pas de prudence théorique.

@@ -43,6 +43,8 @@ from pathlib import Path
 # sans Python installe, qui utilise donc l'interpreteur de ComfyUI.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from network_cluster import initial_loads, parse_servers, select_server  # noqa: E402
+from queue_ltx_multishot import copy_prompt_outputs, upload_image_path, wait_prompt_result  # noqa: E402
 import h3_director_build as director  # noqa: E402
 
 
@@ -163,6 +165,49 @@ def comfy_input_dir():
             return value.strip()
     return director.COMFY_INPUT
 
+
+def resolve_local_reference(entry, settings):
+    """Find the local source represented by a Director timeline entry."""
+    raw = (entry or {}).get("file") or ""
+    normalized = raw.replace("/", os.sep)
+    candidates = []
+    direct = Path(normalized)
+    if direct.is_absolute():
+        candidates.append(direct)
+    input_dir = Path(comfy_input_dir())
+    candidates.append(input_dir / normalized)
+    candidates.append(input_dir / "musedirector" / Path(normalized).name)
+    candidates.append(input_dir / "muse" / Path(normalized).name)
+    project_dir = settings.get("project_dir")
+    if project_dir:
+        candidates.append(Path(project_dir) / (settings.get("refs_subdir") or "refs") / Path(normalized).name)
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    tried = "\n  - ".join(str(item) for item in candidates)
+    raise SystemExit(f"Reference H3 introuvable sur HITCHCOCK: {raw}\nChemins verifies:\n  - {tried}")
+
+
+def upload_h3_images(server, tdata, settings, cache):
+    """Upload character/background images to the selected remote ComfyUI."""
+    project = safe_slug(director.project_link(settings) or "qbuilder", "qbuilder")
+    subfolder = f"musedirector/qbuilder_{project}"
+    entries = list(tdata.get("characters") or []) + [tdata.get("background")]
+    uploaded = 0
+    for entry in entries:
+        if not entry or not entry.get("file"):
+            continue
+        source = resolve_local_reference(entry, settings)
+        key = (server, str(source.resolve()))
+        remote = cache.get(key)
+        if not remote:
+            remote = upload_image_path(server, source, subfolder=subfolder, overwrite="true")
+            cache[key] = remote
+            print(f"  ref uploadee vers {server}: {source.name} -> {remote}")
+        entry["file"] = remote.replace("\\", "/")
+        entry["fileName"] = Path(remote).name
+        uploaded += 1
+    return uploaded
 
 def local_sync_command(settings):
     """Copie des refs du projet vers ComfyUI/input/musedirector/<projet>.
@@ -295,10 +340,12 @@ def main():
     parser.add_argument("--template", default="h3_template_scout_v1.json")
     parser.add_argument("--out-dir", default="h3_workflows")
     parser.add_argument("--server", default="http://127.0.0.1:8188")
+    parser.add_argument("--servers", default="", help="Comma-separated ComfyUI servers; scenes go to the least loaded reachable node.")
     parser.add_argument("--queue", action="store_true",
                         help="POST les workflows sur ComfyUI. Demande un template au format Export (API).")
     parser.add_argument("--preview", action="store_true", help="Affiche le prompt six sections compile.")
     parser.add_argument("--dry-run", action="store_true", help="Valide et affiche, n'ecrit rien, n'envoie rien.")
+    parser.add_argument("--copy-results", default="", help="Attend les rendus et copie leurs sorties dans ce dossier.")
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parent
@@ -333,19 +380,29 @@ def main():
         out_dir.mkdir(parents=True, exist_ok=True)
 
     client_id = str(uuid.uuid4())
-    # On demande une seule fois a ComfyUI ce qu'il sait faire : inutile de
-    # preparer huit scenes pour se faire refuser la premiere.
-    available = available_node_types(args.server) if args.queue else None
+    servers = parse_servers(args.server, args.servers)
+    try:
+        loads = initial_loads(servers) if args.queue and not args.dry_run else {server: 0 for server in servers}
+    except RuntimeError as exc:
+        raise SystemExit(str(exc)) from exc
+    if args.queue:
+        print("ComfyUI target(s): " + ", ".join(loads))
+    available_by_server = {}
+    ref_upload_cache = {}
     queued = []
     written = []
     failures = 0
 
     for index, brief in enumerate(briefs, start=1):
+        target_server = select_server(loads) if args.queue else args.server
         name = safe_slug(brief.get("name") or (brief.get("settings") or {}).get("output_name"), f"scene_{index:02d}")
         label = f"{index:02d} {name}"
         try:
             if template_is_api:
                 settings, tdata, warn = director.normalise(brief)
+                source_tdata = copy.deepcopy(tdata)
+                if args.queue and not args.dry_run:
+                    upload_h3_images(target_server, tdata, settings, ref_upload_cache)
                 workflow = copy.deepcopy(template_data)
                 prefix = (brief.get("settings") or {}).get("output_name") or ""
                 if not prefix and director.project_link(settings):
@@ -372,6 +429,10 @@ def main():
             continue
 
         if args.queue:
+            available = available_by_server.get(target_server)
+            if available is None:
+                available = available_node_types(target_server)
+                available_by_server[target_server] = available
             if available:
                 dropped, blocking = prune_unusable_nodes(workflow, available)
                 for node_id, class_type in dropped:
@@ -385,19 +446,19 @@ def main():
                         "qui a les modeles et les noeuds H3."
                     )
             try:
-                result = queue_prompt(args.server, workflow, client_id)
+                result = queue_prompt(target_server, workflow, client_id)
             except urllib.error.HTTPError as exc:
                 # Une reponse HTTP n'est pas une panne de connexion : le serveur
                 # a repondu, et il explique pourquoi il refuse.
                 raise SystemExit(f"{label} : {describe_comfy_rejection(exc)}") from exc
             except urllib.error.URLError as exc:
                 raise SystemExit(
-                    f"ComfyUI injoignable sur {args.server}: {exc}\n"
+                    f"ComfyUI injoignable sur {target_server}: {exc}\n"
                     "Verifie qu'il tourne et que l'adresse est la bonne."
                 ) from exc
             prompt_id = result.get("prompt_id", "unknown")
-            queued.append((name, prompt_id))
-            print(f"  -> file ComfyUI: {prompt_id}")
+            queued.append({"name": name, "prompt_id": prompt_id, "server": target_server, "workflow": copy.deepcopy(workflow), "settings": settings, "source_tdata": source_tdata})
+            print(f"  -> file ComfyUI {target_server}: {prompt_id}")
             time.sleep(0.2)
         else:
             target = out_dir / f"{index:02d}_{name}.json"
@@ -421,11 +482,34 @@ def main():
         print("Lance UN SEUL rendu en test avant d'empiler le lot: un job qui OOM ne bloque pas la file, "
               "les suivants partent et echouent pareil.")
     if queued:
-        print("\nScenes en file:")
-        for name, prompt_id in queued:
-            print(f"- {name}: {prompt_id}")
+        print("\nSurveillance des scenes en file:")
+    for job in queued:
+        print(f"Attente de {job['name']} sur {job['server']}...")
+        ok, entry, reason = wait_prompt_result(job["server"], job["prompt_id"])
+        if not ok:
+            alternatives = [server for server in loads if server != job["server"]]
+            if alternatives:
+                retry_server = min(alternatives, key=lambda server: loads.get(server, 0))
+                print(f"  ! {reason}; reprise unique sur {retry_server}")
+                retry_tdata = copy.deepcopy(job["source_tdata"])
+                upload_h3_images(retry_server, retry_tdata, job["settings"], ref_upload_cache)
+                try:
+                    retry = queue_prompt(retry_server, job["workflow"], client_id)
+                    job["server"] = retry_server
+                    job["prompt_id"] = retry.get("prompt_id", "unknown")
+                    print(f"  -> nouvelle file ComfyUI: {job['prompt_id']}")
+                    ok, entry, reason = wait_prompt_result(job["server"], job["prompt_id"])
+                except (urllib.error.HTTPError, urllib.error.URLError) as exc:
+                    ok, reason = False, str(exc)
+            if not ok:
+                failures += 1
+                print(f"  ERREUR DEFINITIVE {job['name']}: {reason}")
+                continue
+        print(f"  OK {job['name']} sur {job['server']}")
+        if args.copy_results:
+            copy_prompt_outputs(job["server"], job["prompt_id"], args.copy_results)
     if failures:
-        raise SystemExit(f"\n{failures} scene(s) rejetee(s), rien n'a ete produit pour celles-la.")
+        raise SystemExit(f"\n{failures} scene(s) en echec definitif apres construction ou reprise.")
 
 
 if __name__ == "__main__":

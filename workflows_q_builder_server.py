@@ -26,6 +26,7 @@ import urllib.request
 import uuid
 import webbrowser
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -59,8 +60,15 @@ def local_settings():
     except (OSError, json.JSONDecodeError):
         print("local_settings.json illisible, ignore")
         return {}
-    allowed = ("workflow_browse_path", "comfy_server", "comfy_input")
-    return {key: data[key] for key in allowed if isinstance(data.get(key), str) and data[key]}
+    allowed = ("workflow_browse_path", "comfy_server", "comfy_input", "update_repo", "results_copy_path")
+    result = {key: data[key] for key in allowed if isinstance(data.get(key), str) and data[key]}
+    nodes = data.get("comfy_nodes")
+    if isinstance(nodes, list):
+        result["comfy_nodes"] = [
+            {"name": str(node.get("name") or "ComfyUI"), "url": str(node.get("url") or "").rstrip("/"), "auto": node.get("auto", True) is not False}
+            for node in nodes if isinstance(node, dict) and str(node.get("url") or "").startswith("http")
+        ]
+    return result
 
 
 # Depot public de reference. Surchargeable par "update_repo" dans
@@ -253,6 +261,27 @@ def port_taken(port):
         return probe.connect_ex((HOST, port)) == 0
 
 
+def probe_comfy_node(node):
+    """Read-only health and queue snapshot for one ComfyUI node."""
+    result = {"name": node["name"], "url": node["url"], "auto": node.get("auto", True), "online": False}
+    try:
+        with urllib.request.urlopen(f"{node['url']}/system_stats", timeout=3) as response:
+            stats = json.loads(response.read().decode("utf-8"))
+        with urllib.request.urlopen(f"{node['url']}/queue", timeout=3) as response:
+            queue = json.loads(response.read().decode("utf-8"))
+        device = (stats.get("devices") or [{}])[0]
+        result.update({
+            "online": True,
+            "gpu": device.get("name", ""),
+            "vram_total": device.get("vram_total", 0),
+            "vram_free": device.get("vram_free", 0),
+            "running": len(queue.get("queue_running") or []),
+            "pending": len(queue.get("queue_pending") or []),
+        })
+    except Exception as exc:
+        result["error"] = str(exc)
+    return result
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "WorkflowsQBuilder/1.0"
 
@@ -341,11 +370,20 @@ class Handler(BaseHTTPRequestHandler):
             payload.update(local_settings())
             self.send_json(payload)
             return
+        if parsed.path == "/api/cluster-status":
+            nodes = local_settings().get("comfy_nodes", [])
+            with ThreadPoolExecutor(max_workers=max(1, len(nodes))) as pool:
+                status = list(pool.map(probe_comfy_node, nodes)) if nodes else []
+            self.send_json({"nodes": status})
+            return
         if parsed.path == "/api/ref-image":
             self.handle_ref_image(parse_qs(parsed.query))
             return
         if parsed.path == "/api/workflow-read":
             self.handle_workflow_read(parse_qs(parsed.query))
+            return
+        if parsed.path == "/api/browse-folder":
+            self.handle_browse_folder(parse_qs(parsed.query))
             return
         if parsed.path == "/api/update-check":
             self.handle_update_check()
@@ -388,7 +426,7 @@ class Handler(BaseHTTPRequestHandler):
         except (OSError, json.JSONDecodeError):
             current = {}
 
-        allowed = ("comfy_input", "workflow_browse_path", "comfy_server", "update_repo")
+        allowed = ("comfy_input", "workflow_browse_path", "comfy_server", "update_repo", "results_copy_path")
         changed = {}
         for key in allowed:
             if key in payload and isinstance(payload[key], str):
@@ -415,6 +453,24 @@ class Handler(BaseHTTPRequestHandler):
             return json.loads(self.rfile.read(length).decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
             return {}
+
+    def handle_browse_folder(self, query):
+        """Ouvre le selecteur Windows natif sur la machine qui sert l'app."""
+        initial = unquote((query.get("initial") or [""])[0])
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            kwargs = {"title": "Choisir le dossier de copie des resultats", "mustexist": True}
+            if initial and Path(initial).is_dir():
+                kwargs["initialdir"] = initial
+            selected = filedialog.askdirectory(parent=root, **kwargs)
+            root.destroy()
+            self.send_json({"path": selected or ""})
+        except Exception as exc:
+            self.send_json({"error": f"Selecteur de dossier impossible: {exc}"}, 500)
 
     def handle_h3_ref_import(self):
         """Reprend une image designee par son chemin sur le disque.

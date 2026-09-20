@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="fr">
 <head>
   <meta charset="utf-8">
@@ -321,6 +321,25 @@
     }
 
     .h3-hint.warn { color: var(--danger); }
+
+    .copy-results {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+    }
+
+    .copy-results-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: fit-content;
+      cursor: pointer;
+    }
+
+    .copy-results-toggle input { width: auto; }
+    .copy-results-path { display: none; margin-top: 8px; }
+    .copy-results.enabled .copy-results-path { display: flex; gap: 8px; }
+    .copy-results-path input { min-width: 0; flex: 1; }
 
     .shot-cuts {
       min-height: 130px;
@@ -700,6 +719,16 @@
 
     .warn { color: var(--danger); }
 
+    .cluster-toolbar { display: flex; gap: 10px; align-items: end; flex-wrap: wrap; }
+    .cluster-toolbar label { flex: 1 1 280px; }
+    .cluster-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+    .cluster-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: color-mix(in srgb, var(--panel) 88%, var(--accent) 12%); }
+    .cluster-card.offline { opacity: .62; }
+    .cluster-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 7px; background: var(--danger); }
+    .cluster-card.online .cluster-dot { background: #35c46a; }
+    .cluster-meta { margin-top: 6px; font-size: .86rem; color: var(--muted); }
+    @media (max-width: 980px) { .cluster-cards { grid-template-columns: 1fr; } }
+
     @media (max-width: 980px) {
       .layout,
       .settings,
@@ -869,9 +898,22 @@
         <input id="promptFile" value="ltx_custom_queue.json">
       </label>
       <label>
-        Serveur ComfyUI
+        Serveur ComfyUI de secours
         <input id="server" value="http://127.0.0.1:8188">
       </label>
+    </section>
+
+    <section class="panel" id="clusterPanel">
+      <div class="cluster-toolbar">
+        <label>
+          Cible réseau
+          <select id="clusterTarget">
+            <option value="auto" selected>Automatique — répartir sur les PC disponibles</option>
+          </select>
+        </label>
+        <button id="refreshCluster" type="button">Actualiser les PC</button>
+      </div>
+      <div class="cluster-cards" id="clusterCards"><div class="cluster-meta">Chargement du cluster…</div></div>
     </section>
 
     <section class="h3-panel panel h3-only">
@@ -1110,6 +1152,16 @@
           </div>
           <p class="status" id="status"></p>
           <textarea class="command" id="command" spellcheck="false"></textarea>
+          <div class="copy-results" id="copyResultsPanel">
+            <label class="copy-results-toggle">
+              <input id="copyResults" type="checkbox">
+              Copy results
+            </label>
+            <div class="copy-results-path">
+              <input id="copyResultsPath" placeholder="Dossier de destination des rendus">
+              <button id="browseResults" type="button">Parcourir</button>
+            </div>
+          </div>
         </section>
       </aside>
     </div>
@@ -2100,6 +2152,12 @@
       getShotElements().forEach(updateCutsInfo);
     }
 
+    function copyResultsArg() {
+      if (!document.querySelector("#copyResults")?.checked) return "";
+      const path = document.querySelector("#copyResultsPath")?.value.trim() || "";
+      return path ? `--copy-results ${psSingleQuoted(path)}` : "";
+    }
+
     function buildH3Command() {
       const folder = document.querySelector("#folder").value.trim();
       const briefsFile = document.querySelector("#promptFile").value.trim() || "h3_custom_queue.json";
@@ -2132,8 +2190,9 @@
       const args = [
         `--briefs ${psSingleQuoted(briefsFile)}`,
         `--template ${psSingleQuoted(template)}`,
-        queueMode ? `--queue --server ${psSingleQuoted(server)}` : `--out-dir ${psSingleQuoted(outDir)}`,
-        document.querySelector("#h3Preview").checked ? "--preview" : ""
+        queueMode ? `--queue ${comfyServerArgs()}` : `--out-dir ${psSingleQuoted(outDir)}`,
+        document.querySelector("#h3Preview").checked ? "--preview" : "",
+        queueMode ? copyResultsArg() : ""
       ].filter(Boolean).join(" ");
 
       return [
@@ -2181,12 +2240,13 @@
       );
 
       const args = [
-        `--server ${psSingleQuoted(server)}`,
+        comfyServerArgs(),
         `--workflow ${psSingleQuoted(workflow)}`,
         `--prompts ${psSingleQuoted(promptFile)}`,
         `--duration-seconds ${duration}`,
         `--aspect-ratio ${psSingleQuoted(aspectRatio)}`,
-        `--megapixels ${megapixels}`
+        `--megapixels ${megapixels}`,
+        copyResultsArg()
       ].join(" ");
 
       return [
@@ -2443,6 +2503,7 @@
     // machine ou "python" n'est pas dans le PATH, la commande generee
     // doit designer l'interpreteur exact qui fait tourner l'app.
     let pythonExe = "";
+    let comfyNodes = [];
 
     function pythonCommand() {
       return pythonExe ? `& ${psSingleQuoted(pythonExe)}` : "python";
@@ -2450,6 +2511,52 @@
 
     function psSingleQuoted(value) {
       return `'${value.replaceAll("'", "''")}'`;
+    }
+
+    function comfyServerArgs() {
+      const selected = document.querySelector("#clusterTarget")?.value || "auto";
+      const online = comfyNodes.filter(node => node.online !== false);
+      const automatic = online.filter(node => node.auto !== false);
+      if (selected === "auto" && automatic.length > 1) {
+        return `--servers ${psSingleQuoted(automatic.map(node => node.url).join(","))}`;
+      }
+      const node = comfyNodes.find(item => item.url === selected) || automatic[0] || online[0];
+      const fallback = document.querySelector("#server").value.trim() || "http://127.0.0.1:8188";
+      return `--server ${psSingleQuoted(node?.url || fallback)}`;
+    }
+
+    function renderCluster(nodes) {
+      comfyNodes = nodes;
+      const select = document.querySelector("#clusterTarget");
+      const previous = select.value;
+      select.innerHTML = '<option value="auto">Automatique — répartir sur les PC disponibles</option>'
+        + nodes.map(node => `<option value="${node.url}">${node.name}</option>`).join("");
+      if ([...select.options].some(option => option.value === previous)) select.value = previous;
+      const cards = document.querySelector("#clusterCards");
+      cards.innerHTML = nodes.map(node => {
+        const used = (node.running || 0) + (node.pending || 0);
+        const vram = node.vram_total ? `${(node.vram_total / 1073741824).toFixed(1)} Go VRAM` : "";
+        return `<div class="cluster-card ${node.online ? "online" : "offline"}">
+          <strong><span class="cluster-dot"></span>${node.name}</strong>
+          <div class="cluster-meta">${node.online ? `${vram} · ${used ? `${used} job(s)` : "libre"}${node.auto === false ? " · coordonnateur uniquement" : ""}` : "hors ligne"}<br>${node.url}</div>
+        </div>`;
+      }).join("") || '<div class="cluster-meta">Aucun PC configuré.</div>';
+    }
+
+    async function refreshCluster() {
+      const button = document.querySelector("#refreshCluster");
+      button.classList.add("busy");
+      try {
+        const response = await fetch("/api/cluster-status");
+        if (!response.ok) throw new Error(`réponse ${response.status}`);
+        const data = await response.json();
+        renderCluster(data.nodes || []);
+        document.querySelector("#command").value = buildCommand();
+      } catch (error) {
+        document.querySelector("#clusterCards").innerHTML = `<div class="cluster-meta warn">Cluster indisponible : ${error.message}</div>`;
+      } finally {
+        button.classList.remove("busy");
+      }
     }
 
     function refreshSizeOptions(resetToPreset = false) {
@@ -2668,7 +2775,7 @@
         json,
         `'@`,
         `Set-Content -LiteralPath ${psSingleQuoted(promptFile)} -Value $prompts -Encoding UTF8`,
-        `${pythonCommand()} .\\queue_ltx_multishot.py --server ${psSingleQuoted(server)} --workflow ${psSingleQuoted(workflow)} --prompts ${psSingleQuoted(promptFile)}${overrideArgs ? ` ${overrideArgs}` : ""}`
+        `${pythonCommand()} .\\queue_ltx_multishot.py ${comfyServerArgs()} --workflow ${psSingleQuoted(workflow)} --prompts ${psSingleQuoted(promptFile)}${overrideArgs ? ` ${overrideArgs}` : ""}${copyResultsArg() ? ` ${copyResultsArg()}` : ""}`
       ].join("\n");
     }
 
@@ -3562,6 +3669,57 @@
       document.querySelector("#command").value = buildCommand();
     });
 
+    const copyResultsBox = document.querySelector("#copyResults");
+    const copyResultsPanel = document.querySelector("#copyResultsPanel");
+    const copyResultsPath = document.querySelector("#copyResultsPath");
+
+    function syncCopyResultsUi() {
+      copyResultsPanel.classList.toggle("enabled", copyResultsBox.checked);
+      document.querySelector("#command").value = buildCommand();
+    }
+
+    copyResultsBox.addEventListener("change", syncCopyResultsUi);
+    copyResultsPath.addEventListener("input", () => {
+      document.querySelector("#command").value = buildCommand();
+    });
+    copyResultsPath.addEventListener("change", async () => {
+      const value = copyResultsPath.value.trim();
+      if (!value || !location.protocol.startsWith("http")) return;
+      try {
+        await fetch("/api/local-settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ results_copy_path: value })
+        });
+      } catch (error) {
+        setStatus("#status", `Chemin non memorise: ${error.message}`, true);
+      }
+    });
+
+    document.querySelector("#browseResults").addEventListener("click", async () => {
+      const button = document.querySelector("#browseResults");
+      button.classList.add("busy");
+      try {
+        const response = await fetch(`/api/browse-folder?initial=${encodeURIComponent(copyResultsPath.value.trim())}`);
+        const stale = serverTooOld(response);
+        if (stale) throw stale;
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `selection impossible (${response.status})`);
+        if (!data.path) return;
+        copyResultsPath.value = data.path;
+        await fetch("/api/local-settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ results_copy_path: data.path })
+        });
+        document.querySelector("#command").value = buildCommand();
+        setStatus("#status", `Les resultats seront copies dans: ${data.path}`);
+      } catch (error) {
+        setStatus("#status", error.message, true);
+      } finally {
+        button.classList.remove("busy");
+      }
+    });
     document.querySelector("#browseWorkflow").addEventListener("click", () => {
       document.querySelector("#workflowFile").click();
     });
@@ -3742,6 +3900,11 @@
       if (item.count) document.querySelector("#shotCount").value = item.count;
       document.querySelector("#historyModal").close();
       setStatus("#askStatus", "Demande rechargee.");
+    });
+
+    document.querySelector("#refreshCluster").addEventListener("click", refreshCluster);
+    document.querySelector("#clusterTarget").addEventListener("change", () => {
+      document.querySelector("#command").value = buildCommand();
     });
 
     document.querySelector("#build").addEventListener("click", () => {
@@ -3986,6 +4149,13 @@
           if (server.value.trim() === "http://127.0.0.1:8188") server.value = data.comfy_server;
         }
         if (data.comfy_input) document.querySelector("#h3ComfyInput").value = data.comfy_input;
+        if (data.results_copy_path) copyResultsPath.value = data.results_copy_path;
+        if (Array.isArray(data.comfy_nodes)) {
+          comfyNodes = data.comfy_nodes.map(node => ({ ...node, online: true }));
+          renderCluster(comfyNodes);
+          await refreshCluster();
+        }
+        syncCopyResultsUi();
         document.querySelector("#folder").value = data.root;
         document.querySelector("#command").value = buildCommand();
       } catch (error) {
