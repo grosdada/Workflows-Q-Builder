@@ -167,13 +167,20 @@ def comfy_input_dir():
 
 
 def resolve_local_reference(entry, settings):
-    """Find the local source represented by a Director timeline entry."""
+    """Find the local source represented by a Director timeline entry.
+
+    On a remote-only Q-Builder workstation, reference files are deliberately
+    staged in ``ltx_builder_uploads`` rather than in a local ComfyUI input
+    directory.  Keep that staging directory in the lookup so a brief that
+    stores only a filename can still be uploaded to the selected worker.
+    """
     raw = (entry or {}).get("file") or ""
     normalized = raw.replace("/", os.sep)
     candidates = []
     direct = Path(normalized)
     if direct.is_absolute():
         candidates.append(direct)
+    candidates.append(Path(__file__).resolve().parent / "ltx_builder_uploads" / Path(normalized).name)
     input_dir = Path(comfy_input_dir())
     candidates.append(input_dir / normalized)
     candidates.append(input_dir / "musedirector" / Path(normalized).name)
@@ -185,7 +192,7 @@ def resolve_local_reference(entry, settings):
         if candidate.is_file():
             return candidate
     tried = "\n  - ".join(str(item) for item in candidates)
-    raise SystemExit(f"Reference H3 introuvable sur HITCHCOCK: {raw}\nChemins verifies:\n  - {tried}")
+    raise SystemExit(f"Reference H3 introuvable localement: {raw}\nChemins verifies:\n  - {tried}")
 
 
 def upload_h3_images(server, tdata, settings, cache):

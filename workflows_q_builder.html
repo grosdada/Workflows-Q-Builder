@@ -1985,7 +1985,10 @@
       });
       rows.slice(0, lastFilled + 1).forEach(row => {
         characters.push({
-          file: row.querySelector(".h3-ref-file").value.trim(),
+          // Le champ affiche le nom lisible, mais une image choisie dans
+          // Q-Builder garde aussi son chemin de staging local. C'est celui
+          // que le script utilisera pour l'upload HTTP vers un worker distant.
+          file: row.dataset.stagedPath || row.querySelector(".h3-ref-file").value.trim(),
           description: row.querySelector(".h3-ref-description").value.trim(),
           retention: row.querySelector(".h3-ref-retention").value
         });
@@ -3486,6 +3489,7 @@
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || `copie impossible (${response.status})`);
         row.querySelector(".h3-ref-file").value = data.filename;
+        row.dataset.stagedPath = data.path;
         button.classList.add("done");
         updateH3Hint();
         document.querySelector("#command").value = buildCommand();
@@ -3537,6 +3541,7 @@
           const data = await response.json();
           if (!response.ok) throw new Error(data.error || `import impossible (${response.status})`);
           input.value = data.filename;
+          row.dataset.stagedPath = data.path;
           button.classList.add("done");
           const remoteMode = comfyNodes.length > 0;
           const ready = data.in_comfy || remoteMode;
@@ -3581,7 +3586,11 @@
 
     document.querySelector("#h3Refs").addEventListener("change", (event) => {
       if (!event.target.classList.contains("h3-ref-file")) return;
-      handleTypedRefName(event.target.closest(".h3-ref-row"), event.target);
+      const row = event.target.closest(".h3-ref-row");
+      // Une saisie manuelle remplace une image precedemment choisie : ne pas
+      // conserver par erreur son ancien chemin de staging.
+      delete row.dataset.stagedPath;
+      handleTypedRefName(row, event.target);
     });
 
     // change ne part qu'a la sortie du champ : un collage suivi d'un clic
@@ -4178,7 +4187,6 @@
   </script>
 </body>
 </html>
-
 
 
 
