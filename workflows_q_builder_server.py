@@ -380,6 +380,14 @@ class Handler(BaseHTTPRequestHandler):
             payload.update(local_settings())
             self.send_json(payload)
             return
+        if parsed.path == "/api/heartbeat":
+            # Le lanceur peut demander l'arret automatique : chaque onglet
+            # Q-builder maintient alors le serveur en vie. Quand le dernier
+            # onglet est ferme, le watchdog arrete le serveur proprement.
+            if hasattr(self.server, "last_heartbeat"):
+                self.server.last_heartbeat = time.monotonic()
+            self.send_json({"ok": True})
+            return
         if parsed.path == "/api/cluster-status":
             nodes = local_settings().get("comfy_nodes", [])
             with ThreadPoolExecutor(max_workers=max(1, len(nodes))) as pool:
@@ -788,6 +796,10 @@ def main():
     parser = argparse.ArgumentParser(description="Serveur local de Workflows Q-builder.")
     parser.add_argument("--port", type=int, default=PORT)
     parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument("--auto-stop", action="store_true",
+                        help="Arrete le serveur apres fermeture de tous les onglets Q-builder.")
+    parser.add_argument("--auto-stop-after", type=int, default=30,
+                        help="Delai sans heartbeat avant arret automatique (secondes).")
     args = parser.parse_args()
 
     # Windows laisse deux serveurs se poser sur le meme port sans lever
@@ -813,6 +825,18 @@ def main():
     WORKFLOW_UPLOAD_DIR.mkdir(exist_ok=True)
     httpd = ThreadingHTTPServer((HOST, args.port), Handler)
     url = f"http://{HOST}:{args.port}/"
+    if args.auto_stop:
+        httpd.last_heartbeat = time.monotonic()
+
+        def stop_when_unused():
+            while True:
+                time.sleep(2)
+                if time.monotonic() - httpd.last_heartbeat > max(5, args.auto_stop_after):
+                    print("Aucun onglet Q-builder actif : arret du serveur.")
+                    httpd.shutdown()
+                    return
+
+        threading.Thread(target=stop_when_unused, daemon=True).start()
     print(f"Workflows Q-builder running at {url}")
     if not args.no_browser:
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()

@@ -64,9 +64,11 @@ set "PYARG=%~2"
 exit /b 0
 
 :found
-"%PY%" %PYARG% workflows_q_builder_server.py
-if %errorlevel% neq 0 (
-  echo.
-  echo Le serveur s'est arrete avec une erreur.
-)
-pause
+"%PY%" %PYARG% workflows_q_builder_server.py --auto-stop
+if errorlevel 1 (
+  echo.
+  echo Le serveur s'est arrete avec une erreur.
+  pause
+  exit /b 1
+)
+exit /b 0

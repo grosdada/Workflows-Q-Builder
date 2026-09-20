@@ -4135,6 +4135,11 @@
         setStatus("#status", "Ouvre l'app avec Lancer_Workflows_Q_Builder.bat. Ouverte en double-cliquant le fichier HTML, elle ne peut ni trouver son dossier, ni copier les images, ni se mettre a jour.", true);
         return;
       }
+      // Le lanceur surveille cette pulsation. Fermer le dernier onglet laisse
+      // donc le serveur local s'arreter tout seul, sans fenetre noire a gerer.
+      const heartbeat = () => fetch("/api/heartbeat", { cache: "no-store" }).catch(() => {});
+      heartbeat();
+      setInterval(heartbeat, 5000);
       try {
         const response = await fetch("/api/env");
         if (!response.ok) throw new Error(`reponse ${response.status}`);
@@ -4173,7 +4178,6 @@
   </script>
 </body>
 </html>
-
 
 
 
