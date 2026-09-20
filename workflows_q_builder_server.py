@@ -261,6 +261,16 @@ def port_taken(port):
         return probe.connect_ex((HOST, port)) == 0
 
 
+def existing_qbuilder(port):
+    """True when the listener is this Q-builder, rather than an old server."""
+    try:
+        with urllib.request.urlopen(f"http://{HOST}:{port}/api/env", timeout=1) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError, urllib.error.URLError):
+        return False
+    return data.get("root") == str(ROOT) and data.get("app") == APP_HTML
+
+
 def probe_comfy_node(node):
     """Read-only health and queue snapshot for one ComfyUI node."""
     result = {"name": node["name"], "url": node["url"], "auto": node.get("auto", True), "online": False}
@@ -785,6 +795,12 @@ def main():
     # un ancien ltx_builder_server.py oublie servirait l'ancienne interface
     # pendant que celle-ci tourne pour rien. On refuse plutot que de mentir.
     if port_taken(args.port):
+        if existing_qbuilder(args.port):
+            url = f"http://{HOST}:{args.port}/"
+            print(f"Workflows Q-builder est deja actif sur {url}")
+            if not args.no_browser:
+                webbrowser.open(url)
+            return
         print(f"Le port {args.port} est deja pris par un autre serveur : le plus souvent une "
               f"instance de celui-ci restee ouverte dans une autre fenetre, sinon l'ancien "
               f"ltx_builder_server.py.")
