@@ -464,10 +464,11 @@ def upload_image_data(server, image_data, filename):
     return f"{result['subfolder']}/{result['name']}" if result.get("subfolder") else result["name"]
 
 
-def upload_image_path(server, image_path, subfolder="ltx_queue", overwrite="false"):
+def upload_image_path(server, image_path, subfolder="ltx_queue", overwrite="false", filename=None):
     path = Path(image_path)
     image_bytes = path.read_bytes()
     mime_type = mimetypes.guess_type(path.name)[0] or "image/png"
+    upload_name = Path(filename).name if filename else path.name
     boundary = f"----codex-ltx-{uuid.uuid4().hex}"
 
     def part(name, value, content_type=None, part_filename=None):
@@ -484,7 +485,7 @@ def upload_image_path(server, image_path, subfolder="ltx_queue", overwrite="fals
         return head + body + b"\r\n"
 
     body = b"".join([
-        part("image", image_bytes, mime_type, path.name),
+        part("image", image_bytes, mime_type, upload_name),
         part("type", "input"),
         part("subfolder", subfolder),
         part("overwrite", overwrite),
@@ -659,7 +660,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
 
 

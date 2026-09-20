@@ -26,6 +26,7 @@ construire au-dela, ce script ne contourne rien.
 
 import argparse
 import copy
+import hashlib
 import json
 import os
 import re
@@ -208,7 +209,15 @@ def upload_h3_images(server, tdata, settings, cache):
         key = (server, str(source.resolve()))
         remote = cache.get(key)
         if not remote:
-            remote = upload_image_path(server, source, subfolder=subfolder, overwrite="true")
+            # Certains serveurs ComfyUI sous Windows echouent avec un HTTP 500
+            # pour les noms tres longs issus de prompts. L'image reste intacte
+            # localement : seule sa copie distante recoit un nom court,
+            # deterministe et sans caracteres ambigus.
+            fingerprint = hashlib.sha256(str(source.resolve()).encode("utf-8")).hexdigest()[:16]
+            remote_name = f"ref_{fingerprint}{source.suffix.lower()}"
+            remote = upload_image_path(
+                server, source, subfolder=subfolder, overwrite="true", filename=remote_name
+            )
             cache[key] = remote
             print(f"  ref uploadee vers {server}: {source.name} -> {remote}")
         entry["file"] = remote.replace("\\", "/")
