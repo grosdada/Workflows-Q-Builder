@@ -3493,13 +3493,17 @@
         // c'est un vrai probleme, le workflow ne la trouverait pas. Le message
         // commence donc par le manque, pas par « copiee », qui se lisait comme
         // une reussite en rouge.
+        const remoteMode = comfyNodes.length > 0;
+        const ready = data.in_comfy || remoteMode;
         const message = data.in_comfy
           ? `Copiee dans ComfyUI: ${data.subfolder}/${data.filename}. Rien a synchroniser avant de lancer.`
-          : `Hors de ComfyUI: ${data.filename} est dans le dossier de l'app. Renseigne le dossier input de ComfyUI ci-dessus, puis recharge cette image.`;
+          : remoteMode
+            ? `Image prete localement: ${data.filename}. Elle sera uploadee automatiquement vers le worker choisi au lancement.`
+            : `Hors de ComfyUI: ${data.filename} est dans le dossier de l'app. Renseigne le dossier input de ComfyUI ci-dessus, puis recharge cette image.`;
         // Le retour est dans la ligne ET dans le panneau : selon l'endroit ou
         // on regarde, l'un des deux est hors de l'ecran.
-        setRefState(row, message, data.in_comfy ? "ok" : "warn");
-        setStatus("#status", message, !data.in_comfy);
+        setRefState(row, message, ready ? "ok" : "warn");
+        setStatus("#status", message, !ready);
       } catch (error) {
         setRefState(row, error.message, "warn");
         setStatus("#status", error.message, true);
@@ -3534,10 +3538,14 @@
           if (!response.ok) throw new Error(data.error || `import impossible (${response.status})`);
           input.value = data.filename;
           button.classList.add("done");
+          const remoteMode = comfyNodes.length > 0;
+          const ready = data.in_comfy || remoteMode;
           const message = data.in_comfy
             ? `Copiee dans ComfyUI: ${data.subfolder}/${data.filename}. Rien a synchroniser avant de lancer.`
-            : `Hors de ComfyUI: ${data.filename} est dans le dossier de l'app. Renseigne le dossier input de ComfyUI ci-dessus, puis recharge cette image.`;
-          setRefState(row, message, data.in_comfy ? "ok" : "warn");
+            : remoteMode
+              ? `Image prete localement: ${data.filename}. Elle sera uploadee automatiquement vers le worker choisi au lancement.`
+              : `Hors de ComfyUI: ${data.filename} est dans le dossier de l'app. Renseigne le dossier input de ComfyUI ci-dessus, puis recharge cette image.`;
+          setRefState(row, message, ready ? "ok" : "warn");
           updateH3Hint();
           document.querySelector("#command").value = buildCommand();
           return;
@@ -4165,7 +4173,6 @@
   </script>
 </body>
 </html>
-
 
 
 
