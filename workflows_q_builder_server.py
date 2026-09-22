@@ -428,6 +428,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/local-settings":
             self.handle_local_settings()
             return
+        if parsed.path == "/api/job-recovery":
+            self.handle_job_recovery()
+            return
         self.send_error(404)
 
     def handle_local_settings(self):
@@ -462,6 +465,32 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"error": f"Ecriture impossible: {exc}"}, 500)
             return
         self.send_json({"saved": changed, "comfy_input_valid": valid})
+
+    def handle_job_recovery(self):
+        """Diagnostique ou reprend les jobs connus du poste de commande.
+
+        Aucun job dont le worker est simplement injoignable n'est relance :
+        cela pourrait creer un doublon durant une panne reseau temporaire.
+        """
+        payload = self.read_json_body()
+        retry = bool(payload.get("retry"))
+        settings = local_settings()
+        servers = [str(node.get("url", "")).rstrip("/") for node in settings.get("comfy_nodes", [])
+                   if node.get("url") and node.get("auto") is not False]
+        if not servers and settings.get("comfy_server"):
+            servers = [str(settings["comfy_server"]).rstrip("/")]
+        if not servers:
+            self.send_json({"error": "Aucun worker ComfyUI automatique configure."}, 400)
+            return
+        try:
+            from qbuilder_job_ledger import default_path, recover
+            path = default_path(ROOT)
+            if not path.exists():
+                self.send_json({"error": "Aucun registre de jobs. Les jobs lances avant cette mise a jour ne peuvent pas etre recuperes automatiquement."}, 404)
+                return
+            self.send_json({"jobs": recover(path, servers, retry=retry), "retry": retry})
+        except Exception as exc:
+            self.send_json({"error": f"Reprise des jobs impossible: {exc}"}, 500)
 
     def read_json_body(self):
         length = int(self.headers.get("Content-Length", "0"))

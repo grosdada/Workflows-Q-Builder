@@ -912,8 +912,11 @@
           </select>
         </label>
         <button id="refreshCluster" type="button">Actualiser les PC</button>
+        <button id="inspectJobs" type="button">Diagnostiquer les jobs</button>
+        <button id="recoverJobs" type="button">Reprendre les jobs perdus</button>
       </div>
       <div class="cluster-cards" id="clusterCards"><div class="cluster-meta">Chargement du cluster…</div></div>
+      <p class="status" id="jobRecoveryStatus"></p>
     </section>
 
     <section class="h3-panel panel h3-only">
@@ -2568,6 +2571,31 @@
       }
     }
 
+    async function recoverInterruptedJobs(retry) {
+      const button = document.querySelector(retry ? "#recoverJobs" : "#inspectJobs");
+      const status = document.querySelector("#jobRecoveryStatus");
+      button.classList.add("busy");
+      status.textContent = retry ? "Recherche et reprise unique des jobs perdus…" : "Verification des jobs Q-Builder…";
+      try {
+        const response = await fetch("/api/job-recovery", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ retry })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `reponse ${response.status}`);
+        const jobs = data.jobs || [];
+        status.textContent = jobs.length
+          ? jobs.map(job => `${job.name}: ${job.state} — ${job.detail}${job.action || ""}`).join("\n")
+          : "Aucun job Q-Builder a surveiller.";
+        status.classList.remove("error");
+        await refreshCluster();
+      } catch (error) {
+        status.textContent = error.message;
+        status.classList.add("error");
+      } finally {
+        button.classList.remove("busy");
+      }
+    }
+
     function refreshSizeOptions(resetToPreset = false) {
       const format = document.querySelector("#formatPreset")?.value || "16:9";
       const options = sizesByFormat[format] || sizesByFormat["16:9"];
@@ -3926,6 +3954,8 @@
     });
 
     document.querySelector("#refreshCluster").addEventListener("click", refreshCluster);
+    document.querySelector("#inspectJobs").addEventListener("click", () => recoverInterruptedJobs(false));
+    document.querySelector("#recoverJobs").addEventListener("click", () => recoverInterruptedJobs(true));
     document.querySelector("#clusterTarget").addEventListener("change", () => {
       document.querySelector("#command").value = buildCommand();
     });
@@ -4193,7 +4223,6 @@
   </script>
 </body>
 </html>
-
 
 
 

@@ -14,6 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from network_cluster import initial_loads, parse_servers, select_server
+from qbuilder_job_ledger import default_path as default_ledger_path, record as record_job
 
 
 DEFAULT_NEGATIVE = (
@@ -563,9 +564,11 @@ def main():
                         help="Optional ResolutionSelector megapixels, for example 0.9.")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--copy-results", default="", help="Attend les rendus et copie leurs sorties dans ce dossier.")
+    parser.add_argument("--job-ledger", default="", help="Registre persistant des jobs (defaut: qbuilder_jobs.json).")
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parent
+    ledger_path = Path(args.job_ledger) if args.job_ledger else default_ledger_path(root)
     workflow_path = resolve_workflow_path(root, args.workflow)
     prompts_path = resolve_path(root, args.prompts)
     if not prompts_path.exists():
@@ -598,8 +601,14 @@ def main():
         )
         disable_prompt_enhance(workflow)
         image_name = shot.get("image")
+        references = []
         if shot.get("image_path"):
             image_name = upload_image_path(target_server, shot["image_path"])
+            references.append({
+                "source": str(Path(shot["image_path"]).resolve()),
+                "subfolder": str(Path(image_name).parent).replace("\\", "/"),
+                "filename": Path(image_name).name,
+            })
         if shot.get("image_data"):
             image_name = upload_image_data(
                 target_server,
@@ -643,7 +652,11 @@ def main():
             raise SystemExit(f"Could not reach ComfyUI at {target_server}: {exc}") from exc
 
         prompt_id = result.get("prompt_id", "unknown")
-        queued.append({"shot": name, "prompt_id": prompt_id, "server": target_server})
+        ledger = record_job(ledger_path, {
+            "kind": "ltx", "name": name, "prompt_id": prompt_id, "server": target_server,
+            "workflow": copy.deepcopy(workflow), "references": references,
+        })
+        queued.append({"shot": name, "prompt_id": prompt_id, "server": target_server, "ledger_id": ledger["id"]})
         print(f"Queued {index:02d} {name} on {target_server}: {prompt_id}")
         time.sleep(0.2)
 
@@ -660,6 +673,5 @@ def main():
 
 if __name__ == "__main__":
     main()
-
 
 

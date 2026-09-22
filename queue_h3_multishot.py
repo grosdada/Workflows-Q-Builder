@@ -46,6 +46,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from network_cluster import initial_loads, parse_servers, select_server  # noqa: E402
 from queue_ltx_multishot import copy_prompt_outputs, upload_image_path, wait_prompt_result  # noqa: E402
+from qbuilder_job_ledger import default_path as default_ledger_path, record as record_job, update as update_job  # noqa: E402
 import h3_director_build as director  # noqa: E402
 
 
@@ -196,7 +197,7 @@ def resolve_local_reference(entry, settings):
     raise SystemExit(f"Reference H3 introuvable localement: {raw}\nChemins verifies:\n  - {tried}")
 
 
-def upload_h3_images(server, tdata, settings, cache):
+def upload_h3_images(server, tdata, settings, cache, references=None):
     """Upload character/background images to the selected remote ComfyUI."""
     project = safe_slug(director.project_link(settings) or "qbuilder", "qbuilder")
     subfolder = f"musedirector/qbuilder_{project}"
@@ -220,6 +221,10 @@ def upload_h3_images(server, tdata, settings, cache):
             )
             cache[key] = remote
             print(f"  ref uploadee vers {server}: {source.name} -> {remote}")
+        if references is not None and not any(item.get("source") == str(source.resolve()) for item in references):
+            references.append({
+                "source": str(source.resolve()), "subfolder": subfolder, "filename": Path(remote).name,
+            })
         entry["file"] = remote.replace("\\", "/")
         entry["fileName"] = Path(remote).name
         uploaded += 1
@@ -362,9 +367,11 @@ def main():
     parser.add_argument("--preview", action="store_true", help="Affiche le prompt six sections compile.")
     parser.add_argument("--dry-run", action="store_true", help="Valide et affiche, n'ecrit rien, n'envoie rien.")
     parser.add_argument("--copy-results", default="", help="Attend les rendus et copie leurs sorties dans ce dossier.")
+    parser.add_argument("--job-ledger", default="", help="Registre persistant des jobs (defaut: qbuilder_jobs.json).")
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parent
+    ledger_path = Path(args.job_ledger) if args.job_ledger else default_ledger_path(root)
     briefs_path = resolve_path(root, args.briefs)
     template_path = resolve_path(root, args.template)
     if not briefs_path.exists():
@@ -417,8 +424,9 @@ def main():
             if template_is_api:
                 settings, tdata, warn = director.normalise(brief)
                 source_tdata = copy.deepcopy(tdata)
+                references = []
                 if args.queue and not args.dry_run:
-                    upload_h3_images(target_server, tdata, settings, ref_upload_cache)
+                    upload_h3_images(target_server, tdata, settings, ref_upload_cache, references)
                 workflow = copy.deepcopy(template_data)
                 prefix = (brief.get("settings") or {}).get("output_name") or ""
                 if not prefix and director.project_link(settings):
@@ -473,7 +481,11 @@ def main():
                     "Verifie qu'il tourne et que l'adresse est la bonne."
                 ) from exc
             prompt_id = result.get("prompt_id", "unknown")
-            queued.append({"name": name, "prompt_id": prompt_id, "server": target_server, "workflow": copy.deepcopy(workflow), "settings": settings, "source_tdata": source_tdata})
+            ledger = record_job(ledger_path, {
+                "kind": "h3", "name": name, "prompt_id": prompt_id, "server": target_server,
+                "workflow": copy.deepcopy(workflow), "references": references,
+            })
+            queued.append({"name": name, "prompt_id": prompt_id, "server": target_server, "workflow": copy.deepcopy(workflow), "settings": settings, "source_tdata": source_tdata, "ledger_id": ledger["id"]})
             print(f"  -> file ComfyUI {target_server}: {prompt_id}")
             time.sleep(0.2)
         else:
@@ -511,17 +523,22 @@ def main():
                 upload_h3_images(retry_server, retry_tdata, job["settings"], ref_upload_cache)
                 try:
                     retry = queue_prompt(retry_server, job["workflow"], client_id)
+                    previous_server = job["server"]
+                    previous_prompt_id = job["prompt_id"]
                     job["server"] = retry_server
                     job["prompt_id"] = retry.get("prompt_id", "unknown")
+                    update_job(ledger_path, job["ledger_id"], previous_server=previous_server, previous_prompt_id=previous_prompt_id, server=retry_server, prompt_id=job["prompt_id"], state="queued", retries=1)
                     print(f"  -> nouvelle file ComfyUI: {job['prompt_id']}")
                     ok, entry, reason = wait_prompt_result(job["server"], job["prompt_id"])
                 except (urllib.error.HTTPError, urllib.error.URLError) as exc:
                     ok, reason = False, str(exc)
             if not ok:
                 failures += 1
+                update_job(ledger_path, job["ledger_id"], state="failed", detail=reason)
                 print(f"  ERREUR DEFINITIVE {job['name']}: {reason}")
                 continue
         print(f"  OK {job['name']} sur {job['server']}")
+        update_job(ledger_path, job["ledger_id"], state="finished", detail="termine")
         if args.copy_results:
             copy_prompt_outputs(job["server"], job["prompt_id"], args.copy_results)
     if failures:
