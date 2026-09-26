@@ -38,6 +38,48 @@ dedoublonnait sur les 300 premiers caracteres et n'a rempli qu'un champ sur huit
 Le dedoublonnage compare desormais le texte entier, mais le bloc JSON reste la
 seule facon de ne dependre d'aucune heuristique.
 
+## H3 Director : references differentes par scene
+
+Pour un batch H3 ou chaque scene emploie un autre casting, utiliser
+`"schema": "qbuilder-html/v3"`. Declarer chaque image une seule fois dans
+`assets`, puis selectionner ses identifiants dans chaque scene. Ne pas mettre
+les images dans les scenes elles-memes.
+
+```json
+{
+  "schema": "qbuilder-html/v3",
+  "model": "h3-director",
+  "assets": {
+    "alice": {"filename": "alice.jpg", "data_url": "data:image/jpeg;base64,...", "description": "...", "retention": "fully_preserved"},
+    "bruno": {"filename": "bruno.jpg", "data_url": "data:image/jpeg;base64,...", "description": "...", "retention": "fully_preserved"},
+    "decor_bureau": {"filename": "bureau.jpg", "data_url": "data:image/jpeg;base64,...", "description": "..."}
+  },
+  "scenes": [{
+    "name": "01_alice_bruno",
+    "character_refs": ["alice", "bruno"],
+    "background_ref": "decor_bureau",
+    "cuts": [{"seconds": 5, "text": "<Subject 1> speaks to <Subject 2>.", "speakers": [1]}]
+  }]
+}
+```
+
+`character_refs` fixe les personnages de **cette scene uniquement**, dans cet
+ordre. Ils sont renumerotes localement : les deux IDs selectionnes deviennent
+`<Subject 1>` et `<Subject 2>`, quels que soient leurs rangs dans les autres
+scenes. Les numeros de `speakers` suivent cette meme numerotation locale.
+
+Q-builder construit alors un workflow H3 par scene et n'upload vers son worker
+que les deux images et le decor selectionnes. Les images deja presentes dans le
+`input` d'un worker ne sont pas supprimees, mais elles ne sont pas chargees par
+le workflow d'une scene qui ne les selectionne pas.
+
+Chaque asset doit avoir une `data_url` (`data:image/...;base64,...`), un ID
+unique, un `filename` court et une image sous 25 Mo. `background_ref` est
+optionnel. La limite de 9 references s'applique a une scene, pas a `assets`.
+
+Le schema v2 (`characters` et `background` a la racine) reste adapte lorsqu'un
+batch entier partage le meme casting ; il reste compatible.
+
 ## Schema
 
 Un tableau d'objets, 20 elements maximum (l'app a 20 emplacements).
@@ -50,6 +92,8 @@ Un tableau d'objets, 20 elements maximum (l'app a 20 emplacements).
 | `cuts` | mode H3 Director seulement | `[{"seconds": 3.5, "text": "...", "speakers": [1]}]` |
 | `style` | non | valeur d'un preset camera, ou `"custom"` |
 | `custom_style` | non | texte du style si `style` vaut `"custom"` |
+| `character_refs` | H3 v3 | IDs des assets, dans l'ordre local des `<Subject N>` |
+| `background_ref` | H3 v3 | ID de l'asset decor pour cette scene |
 
 `name` doit etre court et sans caractere exotique : minuscules, chiffres,
 tirets bas. Numeroter dans l'ordre de lecture (`01_`, `02_`…) — c'est ce qui
@@ -84,5 +128,7 @@ une page pour la premiere fois evite de reinventer la structure.
 ## Verification avant de livrer
 
 Compter les elements du bloc JSON et les blocs `<pre>` visibles : les deux
-nombres doivent etre egaux. Un prompt present a l'ecran mais absent du JSON ne
-sera jamais charge, et c'est invisible a la lecture de la page.
+nombres doivent etre egaux. En v3, verifier aussi que chaque ID cite par
+`character_refs` ou `background_ref` existe dans `assets`. Un prompt present a
+l'ecran mais absent du JSON ne sera jamais charge, et c'est invisible a la
+lecture de la page.

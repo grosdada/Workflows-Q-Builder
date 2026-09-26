@@ -1197,6 +1197,7 @@
 4.0 | Wide shot of the corridor, &lt;Subject 1&gt; walks away into the smoke."></textarea>
         </label>
         <div class="cuts-info"></div>
+        <div class="h3-scene-refs"></div>
       </div>
       <div class="shot-image-row ltx-only">
         <label>
@@ -2071,7 +2072,7 @@
     }
 
     function collectH3Briefs() {
-      const characters = collectH3Characters();
+      const fallbackCharacters = collectH3Characters();
       const settingsBase = h3SettingsBase();
       const outputBase = h3OutputBase();
       const backgroundFile = document.querySelector("#h3BackgroundFile").value.trim();
@@ -2088,6 +2089,7 @@
         if (!cuts.length) return null;
         const name = h3SceneName(shot, index);
         const seedValue = Number(shot.querySelector(".shot-seed").value.trim());
+        const selected = h3SceneReferencesFor(shot, fallbackCharacters, background);
         return {
           name,
           settings: {
@@ -2099,8 +2101,9 @@
           dialogue_language: dialogueLanguage,
           overall_soundscape: soundscape,
           non_diegetic_music: music,
-          characters,
-          background,
+          characters: selected.characters,
+          background: selected.background,
+          html_asset_errors: selected.errors,
           cuts
         };
       }).filter(Boolean);
@@ -2108,6 +2111,7 @@
 
     function h3SceneIssues(brief) {
       const issues = [];
+      issues.push(...(brief.html_asset_errors || []));
       const total = brief.cuts.reduce((sum, cut) => sum + cut.seconds, 0);
       if (total > H3_MAX_SECONDS) {
         issues.push(`${total.toFixed(1)}s > ${H3_MAX_SECONDS}s : decoupe en deux scenes (_a / _b), sinon OOM au chunk 2`);
@@ -2490,6 +2494,20 @@
           cutsField.value = "";
         }
         updateCutsInfo(shot);
+      }
+      if (Array.isArray(data?.character_refs)) {
+        shot.dataset.h3CharacterRefs = JSON.stringify(data.character_refs);
+      }
+      if (typeof data?.background_ref === "string") {
+        shot.dataset.h3BackgroundRef = data.background_ref;
+      }
+      const sceneRefs = shot.querySelector(".h3-scene-refs");
+      if (sceneRefs) {
+        const refs = JSON.parse(shot.dataset.h3CharacterRefs || "[]");
+        const background = shot.dataset.h3BackgroundRef || "";
+        sceneRefs.textContent = refs.length || background
+          ? `References HTML : ${refs.join(", ") || "aucun personnage"}${background ? ` · decor : ${background}` : ""}`
+          : "";
       }
       shot.querySelector(".shot-image").value = data?.image || "";
       shot.querySelector(".shot-image-path").value = data?.image_path || "";
@@ -3087,7 +3105,11 @@
               positive: item.positive || item.prompt || item.text || "",
               cuts: Array.isArray(item.cuts) ? item.cuts : undefined,
               style: item.style || "global",
-              custom_style: item.custom_style || ""
+              custom_style: item.custom_style || "",
+              // En schema qbuilder-html/v3, ces IDs sont locaux a UNE scene.
+              // L'absence du champ conserve la compatibilite v2 (refs globales).
+              character_refs: Array.isArray(item.character_refs) ? item.character_refs : undefined,
+              background_ref: typeof item.background_ref === "string" ? item.background_ref : undefined
               })).filter(item => item.positive || item.cuts).slice(0, 20),
               h3: Array.isArray(parsed) ? null : (parsed.h3 || parsed)
             };
@@ -3225,10 +3247,68 @@
       return data;
     }
 
+    function h3HtmlAssetEntries(h3) {
+      const assets = h3 && (h3.assets || h3.reference_assets);
+      if (Array.isArray(assets)) {
+        return assets.map((asset, index) => [String(asset?.id || `asset_${index + 1}`), asset]);
+      }
+      if (assets && typeof assets === "object") return Object.entries(assets);
+      return [];
+    }
+
+    function clearH3ReferenceRows() {
+      document.querySelectorAll(".h3-ref-row").forEach(row => {
+        row.querySelector(".h3-ref-file").value = "";
+        row.querySelector(".h3-ref-description").value = "";
+        delete row.dataset.stagedPath;
+        h3RefPreviewSources.delete(row.dataset.index);
+        row.querySelector(".ref-pick").classList.remove("done");
+        setRefState(row, "");
+      });
+    }
+
     async function importH3HtmlAssets(h3) {
       if (!h3 || !isH3Director()) return 0;
       renderH3Refs();
       let imported = 0;
+      const assets = h3HtmlAssetEntries(h3);
+      if (assets.length) {
+        h3HtmlAssetLibrary.clear();
+        clearH3ReferenceRows();
+        for (const [rawId, asset] of assets) {
+          const id = String(rawId || "").trim();
+          if (!id) throw new Error("Un asset HTML n'a pas d'identifiant.");
+          if (h3HtmlAssetLibrary.has(id)) throw new Error(`Identifiant d'asset HTML duplique: ${id}`);
+          const image = await stageEmbeddedHtmlImage(asset, `${id}.png`);
+          if (!image) throw new Error(`Asset HTML ${id}: data_url image manquant.`);
+          h3HtmlAssetLibrary.set(id, {
+            id, filename: image.filename, path: image.path,
+            description: asset?.description || "",
+            retention: H3_RETENTIONS.includes(asset?.retention) ? asset.retention : "fully_preserved",
+            dataUrl: embeddedImageData(asset)
+          });
+          imported += 1;
+        }
+        // Les slots restent utiles comme inventaire visuel. Ils ne definissent
+        // toutefois plus les refs d'une scene v3 : character_refs le fait.
+        const characterIds = [...new Set(getShotElements().flatMap(shot => {
+          try { return JSON.parse(shot.dataset.h3CharacterRefs || "[]"); } catch { return []; }
+        }))];
+        characterIds.slice(0, H3_MAX_CHARACTERS).forEach((id, index) => {
+          const asset = h3HtmlAssetLibrary.get(String(id));
+          const row = document.querySelector(`.h3-ref-row[data-index="${index}"]`);
+          if (!asset || !row) return;
+          row.querySelector(".h3-ref-file").value = asset.filename;
+          row.querySelector(".h3-ref-description").value = asset.description;
+          row.querySelector(".h3-ref-retention").value = asset.retention;
+          row.dataset.stagedPath = asset.path;
+          h3RefPreviewSources.set(row.dataset.index, asset.dataUrl);
+          row.querySelector(".ref-pick").classList.add("done");
+          setRefState(row, `Asset HTML ${asset.id} pret. Il sera utilise seulement par les scenes qui le selectionnent.`, "ok");
+        });
+        document.querySelector("#h3BackgroundFile").value = "";
+        document.querySelector("#h3BackgroundDescription").value = "";
+      }
       const characters = Array.isArray(h3.characters) ? h3.characters : [];
       for (const [index, character] of characters.slice(0, H3_MAX_CHARACTERS).entries()) {
         const row = document.querySelector(`.h3-ref-row[data-index="${index}"]`);
@@ -3292,6 +3372,12 @@
         });
       }
 
+      // Une page v2 garde les refs globales. Elle ne doit jamais heriter des
+      // selections locales d'une precedente page v3.
+      if (isH3Director() && !h3HtmlAssetEntries(packet.h3).length) {
+        h3HtmlAssetLibrary.clear();
+        clearH3SceneReferenceSelections();
+      }
       applyGeneratedShots(rows);
       const importedImages = await importH3HtmlAssets(packet.h3);
 
@@ -3474,6 +3560,53 @@
     // navigateur permet de garder l'apercu meme si l'API locale est en train
     // de redemarrer ou devient brievement indisponible.
     const h3RefPreviewSources = new Map();
+    // Bibliotheque importee depuis qbuilder-html/v3. Elle peut contenir bien
+    // plus de neuf assets : la limite de neuf est appliquee par SCENE, dans
+    // MuseMinimaxDirector, et non au catalogue du HTML.
+    const h3HtmlAssetLibrary = new Map();
+
+    function h3SceneReferencesFor(shot, fallbackCharacters, fallbackBackground) {
+      if (!Object.hasOwn(shot.dataset, "h3CharacterRefs")) {
+        return { characters: fallbackCharacters, background: fallbackBackground, errors: [] };
+      }
+      let ids = [];
+      try { ids = JSON.parse(shot.dataset.h3CharacterRefs || "[]"); } catch {}
+      ids = Array.isArray(ids) ? ids : [];
+      const errors = [];
+      const characters = [];
+      const seen = new Set();
+      ids.forEach(rawId => {
+        const id = String(rawId || "").trim();
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        const asset = h3HtmlAssetLibrary.get(id);
+        if (!asset) {
+          errors.push(`reference HTML inconnue: ${id}`);
+          return;
+        }
+        characters.push({ file: asset.path, description: asset.description, retention: asset.retention });
+      });
+      if (characters.length > H3_MAX_CHARACTERS) {
+        errors.push(`plus de ${H3_MAX_CHARACTERS} personnages selectionnes pour cette scene`);
+      }
+      const backgroundId = (shot.dataset.h3BackgroundRef || "").trim();
+      let background = null;
+      if (backgroundId) {
+        const asset = h3HtmlAssetLibrary.get(backgroundId);
+        if (!asset) errors.push(`decor HTML inconnu: ${backgroundId}`);
+        else background = { file: asset.path, description: asset.description, retention: asset.retention };
+      }
+      return { characters, background, errors };
+    }
+
+    function clearH3SceneReferenceSelections() {
+      getShotElements().forEach(shot => {
+        delete shot.dataset.h3CharacterRefs;
+        delete shot.dataset.h3BackgroundRef;
+        const label = shot.querySelector(".h3-scene-refs");
+        if (label) label.textContent = "";
+      });
+    }
 
     function setRefState(row, message, tone = "") {
       const state = row.querySelector(".ref-state");
