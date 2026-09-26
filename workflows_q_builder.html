@@ -796,8 +796,8 @@
         <label>
           Modele
           <select id="modelFamily">
-            <option value="ltx" selected>LTX</option>
-            <option value="h3">MiniMax H3</option>
+            <option value="ltx">LTX</option>
+            <option value="h3" selected>MiniMax H3</option>
           </select>
         </label>
         <label class="ltx-only">
@@ -1942,7 +1942,7 @@
     /* ------------------------------------------------------------------ H3 */
 
     function getModelFamily() {
-      return document.querySelector("#modelFamily")?.value || "ltx";
+      return document.querySelector("#modelFamily")?.value || "h3";
     }
 
     function isH3() {
@@ -4302,8 +4302,6 @@
   </script>
 </body>
 </html>
-
-
 
 
 
