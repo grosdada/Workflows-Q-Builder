@@ -3075,18 +3075,22 @@
       for (const script of doc.querySelectorAll("script[type='application/json'], script[data-prompts]")) {
         try {
           const parsed = JSON.parse(script.textContent.trim());
-          if (Array.isArray(parsed)) {
+          const scenes = Array.isArray(parsed) ? parsed : parsed?.scenes;
+          if (Array.isArray(scenes)) {
             // Voie exacte : la page porte ses prompts en JSON, on ne devine
             // rien. Les CUTs H3 passent aussi par la (voir le skill
             // prompt-html-export pour le format attendu).
-            return parsed.map((item, index) => ({
+            return {
+              rows: scenes.map((item, index) => ({
               name: item.name || item.title || `shot_${String(index + 1).padStart(2, "0")}`,
               seed: item.seed || "",
               positive: item.positive || item.prompt || item.text || "",
               cuts: Array.isArray(item.cuts) ? item.cuts : undefined,
               style: item.style || "global",
               custom_style: item.custom_style || ""
-            })).filter(item => item.positive || item.cuts).slice(0, 20);
+              })).filter(item => item.positive || item.cuts).slice(0, 20),
+              h3: Array.isArray(parsed) ? null : (parsed.h3 || parsed)
+            };
           }
         } catch {}
       }
@@ -3108,10 +3112,10 @@
           seen.add(key);
           parsed.name = headingNameFor(el, rows.length) || parsed.name;
           rows.push(parsed);
-          if (rows.length >= 20) return rows;
+          if (rows.length >= 20) return { rows, h3: null };
         }
       }
-      return rows;
+      return { rows, h3: null };
     }
 
     /* ------------------------------------- prompt multishot -> CUTs H3 */
@@ -3188,9 +3192,70 @@
       return "";
     }
 
+    function embeddedImageData(asset) {
+      if (typeof asset === "string") return asset.startsWith("data:image/") ? asset : "";
+      if (!asset || typeof asset !== "object") return "";
+      const value = asset.data_url || asset.dataUrl || asset.image || asset.source || "";
+      return typeof value === "string" && value.startsWith("data:image/") ? value : "";
+    }
+
+    async function stageEmbeddedHtmlImage(asset, fallbackName) {
+      const dataUrl = embeddedImageData(asset);
+      if (!dataUrl) return null;
+      const filename = typeof asset === "object" && asset.filename ? asset.filename : fallbackName;
+      const response = await fetch("/api/data-image", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data_url: dataUrl, filename })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `Image HTML refusee (${response.status})`);
+      return data;
+    }
+
+    async function importH3HtmlAssets(h3) {
+      if (!h3 || !isH3Director()) return 0;
+      renderH3Refs();
+      let imported = 0;
+      const characters = Array.isArray(h3.characters) ? h3.characters : [];
+      for (const [index, character] of characters.slice(0, H3_MAX_CHARACTERS).entries()) {
+        const row = document.querySelector(`.h3-ref-row[data-index="${index}"]`);
+        if (!row || !character) continue;
+        const field = row.querySelector(".h3-ref-file");
+        const image = await stageEmbeddedHtmlImage(character, `subject_${index + 1}.png`);
+        if (image) {
+          field.value = image.filename;
+          row.dataset.stagedPath = image.path;
+          setRefState(row, `Reference HTML prete localement: ${image.filename}. Upload automatique au worker au lancement.`, "ok");
+          imported += 1;
+        }
+        row.querySelector(".h3-ref-description").value = character.description || "";
+        const retention = character.retention || "fully_preserved";
+        if (H3_RETENTIONS.includes(retention)) row.querySelector(".h3-ref-retention").value = retention;
+      }
+      const background = h3.background;
+      if (background) {
+        const image = await stageEmbeddedHtmlImage(background, "background.png");
+        if (image) {
+          document.querySelector("#h3BackgroundFile").value = image.filename;
+          imported += 1;
+        }
+        if (background.description) document.querySelector("#h3BackgroundDescription").value = background.description;
+      }
+      const fields = {
+        style_line: "#h3StyleLine", dialogue_language: "#h3DialogueLanguage",
+        overall_soundscape: "#h3Soundscape", non_diegetic_music: "#h3Music"
+      };
+      Object.entries(fields).forEach(([key, selector]) => {
+        if (typeof h3[key] === "string") document.querySelector(selector).value = h3[key];
+      });
+      updateH3Hint();
+      return imported;
+    }
+
     async function loadPromptsHtmlFile(file) {
       const raw = await file.text();
-      const rows = extractPromptsFromHtml(raw);
+      const packet = extractPromptsFromHtml(raw);
+      const rows = packet.rows;
       if (!rows.length) throw new Error("Aucun prompt detecte dans ce HTML.");
       const kept = Math.min(rows.length, 20);
       document.querySelector("#shotCount").value = kept;
@@ -3214,6 +3279,7 @@
       }
 
       applyGeneratedShots(rows);
+      const importedImages = await importH3HtmlAssets(packet.h3);
 
       // On compte ce qui a atterri dans le champ REELLEMENT visible du mode
       // courant. Compter les deux masquait un decalage de mode : une page de
@@ -3253,7 +3319,7 @@
         // passer d'abord, sinon son resume efface ce compte rendu.
         document.querySelector("#command").value = buildCommand();
         setStatus("#status", `${converted} prompt(s) multishot convertis en CUTs, ${filled} scene(s) remplies. `
-          + notes.join(", ") + ". Verifie les durees et declare tes personnages.", false);
+          + notes.join(", ") + `. ${importedImages} image(s) H3 importee(s). Verifie les durees et les references.`, false);
         return;
       }
 
@@ -3265,7 +3331,7 @@
       const styleNote = styled
         ? ` ${styled} style(s) par plan repris dans Style override.`
         : "";
-      setStatus("#status", `${kept} prompt(s) charges depuis le HTML, ${filled} champ(s) remplis.${styleNote}`,
+      setStatus("#status", `${kept} prompt(s) charges depuis le HTML, ${filled} champ(s) remplis, ${importedImages} image(s) H3 importee(s).${styleNote}`,
         filled < kept);
     }
     async function stageShotImage(shot, file) {
@@ -4223,7 +4289,6 @@
   </script>
 </body>
 </html>
-
 
 
 

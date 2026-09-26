@@ -11,6 +11,7 @@ renvoyait 404 silencieusement, donc la detection ne marchait jamais).
 """
 
 import argparse
+import base64
 import json
 import mimetypes
 import shutil
@@ -413,6 +414,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/upload":
             self.handle_upload()
             return
+        if parsed.path == "/api/data-image":
+            self.handle_data_image()
+            return
         if parsed.path == "/api/workflow-upload":
             self.handle_workflow_upload()
             return
@@ -720,6 +724,46 @@ class Handler(BaseHTTPRequestHandler):
             "path": str(target),
             "url": f"/uploads/{target.name}",
         })
+
+    def handle_data_image(self):
+        """Stage une image data: URL embarquee dans un HTML de prompts.
+
+        Le navigateur ne peut pas lire silencieusement un fichier voisin du
+        HTML. Une data URL rend donc le batch portable, puis cette route la
+        transforme en fichier local que les scripts de queue pourront uploader
+        vers le worker ComfyUI choisi.
+        """
+        payload = self.read_json_body()
+        data_url = payload.get("data_url") or ""
+        filename = Path(str(payload.get("filename") or "reference.png")).name
+        if not isinstance(data_url, str) or not data_url.startswith("data:image/"):
+            self.send_json({"error": "Image embarquee invalide (data:image/...;base64 attendu)."}, 400)
+            return
+        try:
+            header, encoded = data_url.split(",", 1)
+            if ";base64" not in header:
+                raise ValueError("base64 absent")
+            data = base64.b64decode(encoded, validate=True)
+        except (ValueError, UnicodeError) as exc:
+            self.send_json({"error": f"Image embarquee illisible: {exc}"}, 400)
+            return
+        if not data or len(data) > 25 * 1024 * 1024:
+            self.send_json({"error": "Image embarquee vide ou superieure a 25 Mo."}, 400)
+            return
+        suffix = Path(filename).suffix.lower()
+        if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}:
+            suffix = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp", "image/bmp": ".bmp"}.get(
+                header.split(";", 1)[0].lower(), ".png"
+            )
+            filename = Path(filename).stem + suffix
+        try:
+            UPLOAD_DIR.mkdir(exist_ok=True)
+            target = UPLOAD_DIR / f"{int(time.time())}_{uuid.uuid4().hex[:8]}_{filename}"
+            target.write_bytes(data)
+        except OSError as exc:
+            self.send_json({"error": f"Staging de l'image impossible: {exc}"}, 500)
+            return
+        self.send_json({"filename": target.name, "path": str(target), "url": f"/uploads/{target.name}"})
 
     def handle_workflow_upload(self):
         try:
