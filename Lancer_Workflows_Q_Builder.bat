@@ -64,7 +64,10 @@ set "PYARG=%~2"
 exit /b 0
 
 :found
-"%PY%" %PYARG% workflows_q_builder_server.py --auto-stop
+rem Un onglet peut etre ralenti pendant qu'un batch H3 tourne dans PowerShell.
+rem La page signale sa fermeture au serveur ; les 4 heures ne sont qu'un
+rem filet de secours en cas de fermeture anormale du navigateur.
+"%PY%" %PYARG% workflows_q_builder_server.py --auto-stop --auto-stop-after 14400
 if errorlevel 1 (
   echo.
   echo Le serveur s'est arrete avec une erreur.

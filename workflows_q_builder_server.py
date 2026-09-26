@@ -386,7 +386,13 @@ class Handler(BaseHTTPRequestHandler):
             # Q-builder maintient alors le serveur en vie. Quand le dernier
             # onglet est ferme, le watchdog arrete le serveur proprement.
             if hasattr(self.server, "last_heartbeat"):
-                self.server.last_heartbeat = time.monotonic()
+                now = time.monotonic()
+                self.server.last_heartbeat = now
+                session = (parse_qs(parsed.query).get("session") or [""])[0]
+                if session and hasattr(self.server, "active_sessions"):
+                    with self.server.session_lock:
+                        self.server.active_sessions[session] = now
+                        self.server.seen_session = True
             self.send_json({"ok": True})
             return
         if parsed.path == "/api/cluster-status":
@@ -429,6 +435,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/h3-ref-import":
             self.handle_h3_ref_import()
             return
+        if parsed.path == "/api/session-close":
+            self.handle_session_close(parsed.query)
+            return
         if parsed.path == "/api/local-settings":
             self.handle_local_settings()
             return
@@ -436,6 +445,17 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_job_recovery()
             return
         self.send_error(404)
+
+    def handle_session_close(self, query):
+        """Oublie un onglet Q-Builder ferme sans confondre un onglet masque
+        pendant le calcul avec un onglet reellement quitte."""
+        session = (parse_qs(query).get("session") or [""])[0]
+        if session and hasattr(self.server, "active_sessions"):
+            with self.server.session_lock:
+                self.server.active_sessions.pop(session, None)
+                if not self.server.active_sessions:
+                    self.server.no_sessions_since = time.monotonic()
+        self.send_json({"ok": True})
 
     def handle_local_settings(self):
         """Ecrit un reglage propre a cette machine dans local_settings.json.
@@ -900,11 +920,38 @@ def main():
     url = f"http://{HOST}:{args.port}/"
     if args.auto_stop:
         httpd.last_heartbeat = time.monotonic()
+        httpd.active_sessions = {}
+        httpd.session_lock = threading.Lock()
+        httpd.seen_session = False
+        httpd.no_sessions_since = None
 
         def stop_when_unused():
             while True:
                 time.sleep(2)
-                if time.monotonic() - httpd.last_heartbeat > max(5, args.auto_stop_after):
+                now = time.monotonic()
+                with httpd.session_lock:
+                    # Un onglet en arriere-plan est fortement bridé par le
+                    # navigateur sous Windows. On lui laisse largement le
+                    # temps d'un batch H3, mais un vrai pagehide le retire
+                    # immediatement via /api/session-close.
+                    expiry = max(60, args.auto_stop_after)
+                    stale = [key for key, seen in httpd.active_sessions.items()
+                             if now - seen > expiry]
+                    for key in stale:
+                        httpd.active_sessions.pop(key, None)
+                    active = bool(httpd.active_sessions)
+                    if active:
+                        httpd.no_sessions_since = None
+                    elif httpd.seen_session and httpd.no_sessions_since is None:
+                        httpd.no_sessions_since = now
+                    no_sessions_since = httpd.no_sessions_since
+                # Au premier lancement, laisse au navigateur le temps de
+                # s'ouvrir. Apres fermeture du dernier onglet, cinq secondes
+                # suffisent et permettent aussi un Ctrl+R sans tuer le serveur.
+                idle_limit = 5 if httpd.seen_session else max(10, args.auto_stop_after)
+                idle_for = (now - no_sessions_since) if no_sessions_since else 0
+                if (not active and ((httpd.seen_session and idle_for > idle_limit)
+                                    or (not httpd.seen_session and now - httpd.last_heartbeat > idle_limit))):
                     print("Aucun onglet Q-builder actif : arret du serveur.")
                     httpd.shutdown()
                     return

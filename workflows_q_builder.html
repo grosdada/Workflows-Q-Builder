@@ -3238,6 +3238,7 @@
         if (image) {
           field.value = image.filename;
           row.dataset.stagedPath = image.path;
+          h3RefPreviewSources.set(row.dataset.index, embeddedImageData(character));
           setRefState(row, `Reference HTML prete localement: ${image.filename}. Upload automatique au worker au lancement.`, "ok");
           imported += 1;
         }
@@ -3469,6 +3470,10 @@
     // ComfyUI, la ou le noeud Director ira le chercher. On garde le File en
     // memoire pour que Describe puisse le relire sans le redemander.
     const h3RefFiles = new Map();
+    // Les batches sont lances dans une autre fenetre. Conserver une source
+    // navigateur permet de garder l'apercu meme si l'API locale est en train
+    // de redemarrer ou devient brievement indisponible.
+    const h3RefPreviewSources = new Map();
 
     function setRefState(row, message, tone = "") {
       const state = row.querySelector(".ref-state");
@@ -3559,8 +3564,16 @@
       const name = row.querySelector(".h3-ref-file").value.trim();
       if (!name || !location.protocol.startsWith("http")) return;
       const image = refPreview.querySelector("img");
+      const fallback = h3RefPreviewSources.get(row.dataset.index) || "";
       const rect = button.getBoundingClientRect();
-      image.onerror = () => { refPreview.classList.remove("visible"); };
+      image.onerror = () => {
+        if (fallback && image.src !== fallback) {
+          image.onerror = () => { refPreview.classList.remove("visible"); };
+          image.src = fallback;
+          return;
+        }
+        refPreview.classList.remove("visible");
+      };
       image.onload = () => {
         refPreview.classList.add("visible");
         const width = refPreview.offsetWidth;
@@ -3589,6 +3602,7 @@
       const button = row.querySelector(".ref-pick");
       const index = row.dataset.index;
       h3RefFiles.set(index, file);
+      h3RefPreviewSources.set(index, URL.createObjectURL(file));
       button.classList.add("busy");
       setRefState(row, "Copie en cours...");
       try {
@@ -3703,6 +3717,7 @@
       // Une saisie manuelle remplace une image precedemment choisie : ne pas
       // conserver par erreur son ancien chemin de staging.
       delete row.dataset.stagedPath;
+      h3RefPreviewSources.delete(row.dataset.index);
       handleTypedRefName(row, event.target);
     });
 
@@ -4261,9 +4276,20 @@
       }
       // Le lanceur surveille cette pulsation. Fermer le dernier onglet laisse
       // donc le serveur local s'arreter tout seul, sans fenetre noire a gerer.
-      const heartbeat = () => fetch("/api/heartbeat", { cache: "no-store" }).catch(() => {});
+      const qBuilderSession = globalThis.crypto?.randomUUID?.()
+        || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const heartbeat = () => fetch(`/api/heartbeat?session=${encodeURIComponent(qBuilderSession)}`, { cache: "no-store" }).catch(() => {});
+      const closeQBuilderSession = () => {
+        const url = `/api/session-close?session=${encodeURIComponent(qBuilderSession)}`;
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon(url, "");
+        } else {
+          fetch(url, { method: "POST", keepalive: true }).catch(() => {});
+        }
+      };
       heartbeat();
       setInterval(heartbeat, 5000);
+      window.addEventListener("pagehide", closeQBuilderSession);
       try {
         const response = await fetch("/api/env");
         if (!response.ok) throw new Error(`reponse ${response.status}`);
@@ -4302,6 +4328,3 @@
   </script>
 </body>
 </html>
-
-
-
