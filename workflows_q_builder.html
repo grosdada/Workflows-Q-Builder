@@ -3203,10 +3203,23 @@
       const dataUrl = embeddedImageData(asset);
       if (!dataUrl) return null;
       const filename = typeof asset === "object" && asset.filename ? asset.filename : fallbackName;
-      const response = await fetch("/api/data-image", {
+      let response = await fetch("/api/data-image", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ data_url: dataUrl, filename })
       });
+      // Une ancienne fenetre serveur peut servir le HTML lu sur disque mais
+      // ignorer la route ajoutee plus tard. Le endpoint /api/upload, lui,
+      // existe depuis les premieres versions : on y envoie alors le meme
+      // contenu sous forme de fichier navigateur, sans demander a l'utilisateur
+      // de traquer ou fermer cette fenetre.
+      if (response.status === 404) {
+        const imageResponse = await fetch(dataUrl);
+        if (!imageResponse.ok) throw new Error("Image HTML illisible.");
+        const blob = await imageResponse.blob();
+        const form = new FormData();
+        form.append("image", new File([blob], filename, { type: blob.type || "image/png" }));
+        response = await fetch("/api/upload", { method: "POST", body: form });
+      }
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || `Image HTML refusee (${response.status})`);
       return data;
@@ -4289,7 +4302,6 @@
   </script>
 </body>
 </html>
-
 
 
 
