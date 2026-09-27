@@ -1029,8 +1029,11 @@
           <textarea id="h3BackgroundDescription" placeholder="the setting: ..."></textarea>
         </label>
       </div>
-      <p class="h3-section-title h3dir-only">Personnages — l'ordre fixe &lt;Subject 1..N&gt;, un slot sans image est ignore</p>
+      <p class="h3-section-title h3dir-only">Catalogue d'images — jusqu'a 20 assets pour le HTML v3 ; H3 utilise 9 references maximum par scene</p>
       <div id="h3Refs" class="h3dir-only"></div>
+      <div class="actions h3dir-only">
+        <button id="clearH3Images" class="danger" type="button">Clear images</button>
+      </div>
       <p class="h3-hint" id="h3Hint"></p>
     </section>
 
@@ -1873,6 +1876,9 @@
     // refuse de construire au-dela ; on previent ici pour ne pas perdre le voyage.
     const H3_MAX_SECONDS = 15;
     const H3_MAX_CHARACTERS = 9;
+    // Le modele accepte 9 images par workflow, mais le catalogue de l'UI peut
+    // en garder davantage pour les batches HTML v3 a casting variable.
+    const H3_ASSET_SLOTS = 20;
     const H3_RETENTIONS = ["fully_preserved", "partially_preserved", "attribute_transfer", "weak_reference"];
 
     const baseStyle = "Source-image-faithful LTX image-to-video prompt. Preserve the subject identity, composition, materials, colors, lighting, camera angle, and background while adding visible physical motion and clear environmental motion.";
@@ -1966,7 +1972,7 @@
       const host = document.querySelector("#h3Refs");
       if (!host || host.children.length) return;
       const retentionOptions = H3_RETENTIONS.map(value => `<option value="${value}">${value}</option>`).join("");
-      host.innerHTML = Array.from({ length: H3_MAX_CHARACTERS }, (unused, index) => `
+      host.innerHTML = Array.from({ length: H3_ASSET_SLOTS }, (unused, index) => `
         <div class="h3-ref-row" data-index="${index}">
           <div class="ref-num">${index + 1}</div>
           <div class="ref-cell">
@@ -2117,6 +2123,9 @@
         issues.push(`${total.toFixed(1)}s > ${H3_MAX_SECONDS}s : decoupe en deux scenes (_a / _b), sinon OOM au chunk 2`);
       }
       const declared = brief.characters.length;
+      if (declared > H3_MAX_CHARACTERS) {
+        issues.push(`H3 accepte ${H3_MAX_CHARACTERS} personnages maximum par scene : utilise character_refs du HTML v3 pour choisir seulement les refs de ce plan`);
+      }
       // Un meme <Subject N> manquant est signale UNE fois pour la scene, pas
       // une fois par CUT : sur six plans qui citent le meme personnage, la
       // ligne d'etat devenait illisible et noyait les autres avertissements.
@@ -3294,7 +3303,7 @@
         const characterIds = [...new Set(getShotElements().flatMap(shot => {
           try { return JSON.parse(shot.dataset.h3CharacterRefs || "[]"); } catch { return []; }
         }))];
-        characterIds.slice(0, H3_MAX_CHARACTERS).forEach((id, index) => {
+        characterIds.slice(0, H3_ASSET_SLOTS).forEach((id, index) => {
           const asset = h3HtmlAssetLibrary.get(String(id));
           const row = document.querySelector(`.h3-ref-row[data-index="${index}"]`);
           if (!asset || !row) return;
@@ -4195,6 +4204,13 @@
       const command = document.querySelector("#command").value || buildCommand();
       document.querySelector("#command").value = command;
       if (!command) return;
+      if (!copyResultsBox.checked) {
+        const proceed = confirm(t("Copy results n'est pas coche : les rendus resteront uniquement dans le dossier output des workers.\n\nOK = copier quand meme la commande ; Annuler = revenir cocher Copy results."));
+        if (!proceed) {
+          setStatus("#status", "Commande non copiee : coche Copy results puis choisis le dossier de destination.", true);
+          return;
+        }
+      }
       await navigator.clipboard.writeText(command);
       setStatus("#status", "Commande copiee.");
       if (isH3Director()) {
@@ -4216,6 +4232,29 @@
       getShotElements().forEach((shot, index) => fillShot(shot, { name: `shot_${String(index + 1).padStart(2, "0")}`, seed: 1125119286042028 + index, positive: "", clearCuts: true }, index));
       document.querySelector("#command").value = "";
       setStatus("#status", "Tous les prompts ont ete effaces.");
+    });
+
+    document.querySelector("#clearH3Images").addEventListener("click", () => {
+      if (!confirm(t("Effacer toutes les images de reference et les decors du batch courant ?\n\nLes fichiers deja stages localement ou envoyes aux workers ne seront pas supprimes."))) return;
+      document.querySelectorAll(".h3-ref-row").forEach(row => {
+        const source = h3RefPreviewSources.get(row.dataset.index);
+        if (source?.startsWith("blob:")) URL.revokeObjectURL(source);
+        row.querySelector(".h3-ref-file").value = "";
+        row.querySelector(".h3-ref-input").value = "";
+        row.querySelector(".h3-ref-description").value = "";
+        delete row.dataset.stagedPath;
+        row.querySelector(".ref-pick").classList.remove("done");
+        setRefState(row, "");
+      });
+      h3RefFiles.clear();
+      h3RefPreviewSources.clear();
+      h3HtmlAssetLibrary.clear();
+      clearH3SceneReferenceSelections();
+      document.querySelector("#h3BackgroundFile").value = "";
+      document.querySelector("#h3BackgroundDescription").value = "";
+      updateH3Hint();
+      document.querySelector("#command").value = buildCommand();
+      setStatus("#status", "Images et decors effaces du batch courant. Les fichiers deja uploades restent intacts.");
     });
 
     shots.addEventListener("click", async (event) => {
