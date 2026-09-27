@@ -459,6 +459,28 @@
       background: var(--backdrop);
     }
 
+    dialog.copy-results-warning {
+      border: 3px solid var(--danger);
+      background: linear-gradient(rgba(255, 112, 112, 0.12), rgba(255, 112, 112, 0.12)), var(--panel);
+      box-shadow: 0 0 0 5px rgba(255, 112, 112, 0.16);
+    }
+
+    .copy-results-warning h2,
+    .copy-results-warning p {
+      color: var(--danger);
+    }
+
+    .copy-results-warning p {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .copy-results-warning button[value="without"] {
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
     .modal {
       display: grid;
       gap: 14px;
@@ -883,6 +905,17 @@
         <div class="actions">
           <button id="clearHistory" class="danger" type="button">Effacer</button>
           <button value="close">Fermer</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="copyResultsWarning" class="copy-results-warning" aria-labelledby="copyResultsWarningTitle" aria-describedby="copyResultsWarningText">
+      <form class="modal" method="dialog">
+        <h2 id="copyResultsWarningTitle">⚠ Copy results désactivé</h2>
+        <p id="copyResultsWarningText">Les rendus resteront uniquement dans le dossier output des workers. Aucune copie ne sera rapatriée sur ce PC.</p>
+        <div class="actions">
+          <button class="primary" value="enable">Revenir cocher Copy results</button>
+          <button value="without">Copier sans rapatriement</button>
         </div>
       </form>
     </dialog>
@@ -1395,6 +1428,15 @@
       "Historique efface.": "History cleared.",
       "Demande rechargee.": "Request reloaded.",
       "Commande copiee.": "Command copied.",
+      "⚠ Copy results désactivé": "⚠ Copy results disabled",
+      "Les rendus resteront uniquement dans le dossier output des workers. Aucune copie ne sera rapatriée sur ce PC.":
+        "Renders will remain only in the workers' output folders. No copy will be downloaded to this PC.",
+      "Revenir cocher Copy results": "Go back and enable Copy results",
+      "Copier sans rapatriement": "Copy without downloading results",
+      "Commande copiée sans rapatriement : les rendus resteront sur les workers.":
+        "Command copied without downloading results: renders will remain on the workers.",
+      "Commande non copiée : coche Copy results puis choisis le dossier de destination.":
+        "Command not copied: enable Copy results, then choose the destination folder.",
       "Tous les prompts ont ete effaces.": "All prompts have been cleared.",
       "Choisis une image dans ce shot avant Describe.": "Pick an image in this shot before Describe.",
       "Description GPT en cours...": "Describing with the model...",
@@ -4205,11 +4247,21 @@
       document.querySelector("#command").value = command;
       if (!command) return;
       if (!copyResultsBox.checked) {
-        const proceed = confirm(t("Copy results n'est pas coche : les rendus resteront uniquement dans le dossier output des workers.\n\nOK = copier quand meme la commande ; Annuler = revenir cocher Copy results."));
-        if (!proceed) {
-          setStatus("#status", "Commande non copiee : coche Copy results puis choisis le dossier de destination.", true);
+        const warning = document.querySelector("#copyResultsWarning");
+        warning.returnValue = "";
+        const choice = new Promise(resolve => {
+          warning.addEventListener("close", () => resolve(warning.returnValue), { once: true });
+        });
+        warning.showModal();
+        if (await choice !== "without") {
+          setStatus("#status", "Commande non copiée : coche Copy results puis choisis le dossier de destination.", true);
+          copyResultsBox.scrollIntoView({ block: "center", behavior: "smooth" });
+          copyResultsBox.focus();
           return;
         }
+        await navigator.clipboard.writeText(command);
+        setStatus("#status", "Commande copiée sans rapatriement : les rendus resteront sur les workers.", true);
+        return;
       }
       await navigator.clipboard.writeText(command);
       setStatus("#status", "Commande copiee.");
