@@ -77,12 +77,8 @@ MAX_CHARACTERS = 9
 
 DEFAULTS = {
     "mode": "reference",
-    "aspect_ratio": "16:9 (Widescreen)",
-    # 0.8 MP = 1216x672 en 16:9. Valeur demandée par David le 2026-08-09, après
-    # 0.4 puis 0.6 : la passe de refine qui remontait la sortie à 0.9 MP étant
-    # désactivée, c'est cette valeur seule qui détermine la qualité finale.
-    # Compter ~1 min/step à 0.6 MP sur sa machine, donc ~1,3 min/step à 0.8 —
-    # environ 25-30 min pour 20 steps. Descendre à 0.4 pour du repérage rapide.
+    "aspect_ratio": "4:3 (Standard)",
+    # 0.8 MP et 4:3 par defaut pour les nouveaux briefs H3 Director.
     "megapixels": 0.8,
     "multiple": 32,
     "resize_method": "crop",

@@ -985,8 +985,8 @@
         <label>
           Aspect ratio
           <select id="h3AspectRatio">
-            <option value="16:9 (Widescreen)" selected>16:9 (Widescreen)</option>
-            <option value="4:3 (Standard)">4:3 (Standard)</option>
+            <option value="16:9 (Widescreen)">16:9 (Widescreen)</option>
+            <option value="4:3 (Standard)" selected>4:3 (Standard)</option>
             <option value="3:2 (Photo)">3:2 (Photo)</option>
             <option value="1:1 (Square)">1:1 (Square)</option>
             <option value="9:16 (Portrait Widescreen)">9:16 (Portrait Widescreen)</option>
@@ -997,7 +997,7 @@
         </label>
         <label>
           Megapixels
-          <input id="h3Megapixels" type="number" min="0.1" max="4" step="0.1" value="0.9">
+          <input id="h3Megapixels" type="number" min="0.1" max="4" step="0.1" value="0.8">
         </label>
         <label class="h3dir-only">
           Steps
@@ -2097,7 +2097,7 @@
         refs_subdir: document.querySelector("#h3RefsSubdir").value.trim() || "refs",
         link_mode: document.querySelector("#h3LinkMode").value,
         aspect_ratio: document.querySelector("#h3AspectRatio").value,
-        megapixels: Number(document.querySelector("#h3Megapixels").value) || 0.9,
+        megapixels: Number(document.querySelector("#h3Megapixels").value) || 0.8,
         steps: Math.max(1, Number(document.querySelector("#h3Steps").value) || 20),
         sampler_name: document.querySelector("#h3Sampler").value,
         scheduler: document.querySelector("#h3Scheduler").value,
@@ -2290,7 +2290,7 @@
       const duration = h3T2vDuration();
       const shots = h3T2vShotCount();
       const aspectRatio = document.querySelector("#h3AspectRatio").value;
-      const megapixels = Number(document.querySelector("#h3Megapixels").value) || 0.9;
+      const megapixels = Number(document.querySelector("#h3Megapixels").value) || 0.8;
       const over = duration > H3_MAX_SECONDS;
       // On compte les plans reellement ecrits dans les prompts : c'est le seul
       // moyen de voir qu'un modele a ignore la consigne multishot.
