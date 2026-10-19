@@ -19,18 +19,19 @@ l'affaire) via un fichier `python_path.txt` posé à côté du `.bat`.
 
 ComfyUI doit tourner sur `http://127.0.0.1:8188/` avec les modèles voulus.
 
-## Les trois moteurs
+## Les moteurs
 
 | Moteur | Ce qu'on remplit | Ce qui part |
 |---|---|---|
 | **LTX** 2.5 / 2.3 | un prompt par plan | `queue_ltx_multishot.py` → file ComfyUI |
 | **MiniMax H3 — Director** | CUTs + images de référence | `queue_h3_multishot.py` → file ou fichiers `.json` |
 | **MiniMax H3 — T2V** | un prompt par scène | `queue_ltx_multishot.py` → file ComfyUI |
+| **MiniMax H3 — Orbital** | image de départ, références et trajectoire | `queue_h3_orbital.py` → file ComfyUI |
 
 ## Ce que fait l'app
 
-- **Génération assistée** des prompts via OpenAI, Anthropic (Claude) ou Google (Gemini).
-  Une clé par fournisseur, stockée dans le navigateur, jamais dans les fichiers. La liste
+- **Génération assistée** des prompts via OpenAI, Anthropic (Claude), Google (Gemini) ou DeepSeek.
+  Une clé par fournisseur, conservée en mémoire ou dans le navigateur si demandé, jamais dans les fichiers. La liste
   des modèles se rafraîchit depuis l'API du fournisseur, donc elle ne périme pas.
 - **Presets caméra / style** par époque, du film noir des années 1930 à l'iPhone, avec
   surcharge possible plan par plan.
@@ -69,7 +70,8 @@ Ce fichier n'est pas versionné et survit aux mises à jour.
 
 Chaque ComfyUI distant doit être lancé avec `--listen 0.0.0.0` et rester limité au réseau privé. Les scripts acceptent toujours `--server` pour un seul PC, et désormais `--servers` avec une liste séparée par des virgules. Les images LTX/I2V sont envoyées au nœud choisi via son API avant le workflow.
 
-Q-builder peut tourner sur un poste de commande sans ComfyUI. Les références H3 sont alors conservées par l’app puis envoyées au worker choisi. Le drapeau uto active ou exclut chaque nœud de la répartition automatique. Une scène H3 qui échoue ou disparaît est réessayée une seule fois sur un autre worker. L’option **Copy results** attend les rendus et télécharge une copie des sorties dans le dossier choisi, sans supprimer les originaux des workers.
+Q-builder peut tourner sur un poste de commande sans ComfyUI. Les références H3 sont alors conservées par l’app puis envoyées au worker choisi. Le drapeau `auto` active ou exclut chaque nœud de la répartition automatique. Une scène H3 qui échoue ou disparaît est réessayée une seule fois sur un autre worker. L’option **Copy results** attend les rendus et télécharge une copie des sorties dans le dossier choisi, sans supprimer les originaux des workers.
+
 ## Règles MiniMax H3 à ne pas contourner
 
 Elles viennent de plantages réels, pas de prudence théorique.
@@ -91,3 +93,37 @@ Elles viennent de plantages réels, pas de prudence théorique.
 La construction des workflows H3 Director reprend le skill `muse-h3-director`
 (`h3_director_build.py`), qui patche un template ComfyUI existant plutôt que de
 régénérer le graphe.
+
+## Références par prompt et génération intégrée
+
+En mode H3 Director, chaque prompt peut utiliser les **images communes** ou un
+**jeu propre à ce prompt**. Une seule image peut servir à trois prompts ; trois
+prompts peuvent aussi utiliser chacun trois images différentes. Le choix se fait
+sous chaque prompt, par import de fichiers ou sélection des images déjà chargées.
+Les fichiers portant le même nom restent distincts lorsqu’ils sont importés par prompt.
+
+L’ordre choisi définit `<Subject 1>`, `<Subject 2>`, etc., à nouveau pour chaque
+scène. La génération assistée conserve ces associations et reçoit les références
+propres à chaque scène. Elle contrôle la réponse complète avant de remplacer les
+textes ; une réponse invalide reste disponible pour réapplication sans nouvel
+appel payant. L’IA texte reçoit les descriptions, pas automatiquement les pixels.
+
+Les catalogues OpenAI et Anthropic affichent les cinq modèles texte les plus
+récents retournés par leur API. Les modèles sont récupérés avec leur pagination.
+DeepSeek utilise sa propre clé et le catalogue de son API. Les erreurs et réponses
+tronquées conservent les prompts existants.
+
+Le skill synchronisé est dans [skill/prompt-html-export](skill/prompt-html-export/SKILL.md)
+et dans l’archive importable [prompt-html-export.skill](prompt-html-export.skill).
+Il couvre le contrat HTML v3, les images partagées ou propres à une scène, les
+Subjects et les locuteurs. La recette artistique Mode-Cringe/VHS reste distincte
+des règles techniques.
+
+Les versions récentes de `MuseMinimaxDirector` requièrent `candidate_2`,
+`candidate_3` et `candidate_4`. Q-Builder complète les anciens exports avec les
+valeurs désactivées, en conservant les valeurs ou branchements explicites.
+
+Vérification : références communes et trois jeux de trois images exercés dans
+l’interface avec des fournisseurs simulés ; aucune génération payante ni rendu
+GPU n’est nécessaire pour ces contrôles. Les tests Orbital peuvent être lancés
+avec `python -m unittest test_h3_orbital_qbuilder.py`.

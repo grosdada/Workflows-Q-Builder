@@ -1,0 +1,114 @@
+{
+ "out": "exemple_sortie.html",
+ "title": "H3 Director · lot exemple · 2 scenes",
+ "intro": "Exemple : deux scenes, chacune avec son propre casting.",
+ "aspect_ratio": "4:3",
+ "duration": 15,
+ "style_line": "Footage from a VHS tape recorded at home in 1987: a French television documentary ... Handheld at shoulder height from one spot at a time ... The camera only pans and tilts. Mostly medium shots and close-ups, full figures only briefly. ... Deadpan slice of life, slow, long silences, no punchline. Every face is real human skin with visible pores, fine lines and small imperfections, moving naturally.",
+ "overall_soundscape": "mono camcorder sound with a constant tape hiss: the room tone of each place, footsteps, voices too low to understand; no music",
+ "non_diegetic_music": "",
+ "dialogue_language": "none",
+ "assets": {
+  "m091": {
+   "data_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL0oQAAAABJRU5ErkJggg==",
+   "description": "a puffy-faced man of about forty with curly blond hair, in a dark red velvet waistcoat with huge pink feather sleeves",
+   "retention": "fully_preserved"
+  },
+  "m436": {
+   "data_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL0oQAAAABJRU5ErkJggg==",
+   "description": "a narrow-faced man of about fifty with slicked-back black hair, in an immense shaggy white fur coat",
+   "retention": "fully_preserved"
+  },
+  "m609": {
+   "data_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL0oQAAAABJRU5ErkJggg==",
+   "description": "a long-faced man of about fifty-five with a thin moustache, a pointed silver helmet and a shiny silver jumpsuit",
+   "retention": "fully_preserved"
+  },
+  "decor_poste": {
+   "data_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScL0oQAAAABJRU5ErkJggg==",
+   "description": "a small French post office in 1987, the counter on the right, the queue on the left: the set of every shot"
+  }
+ },
+ "scenes": [
+  {
+   "name": "01_la-poste",
+   "seed": 1001,
+   "character_refs": [
+    "m091"
+   ],
+   "background_ref": "decor_poste",
+   "cuts": [
+    {
+     "seconds": 3,
+     "text": "The counter with its glass screen on the right, the queue on the left. Camera A, from the end of the queue: <Subject 1> stands at the counter, his pink feather sleeves spilling over the ledge.",
+     "speakers": []
+    },
+    {
+     "seconds": 2.5,
+     "text": "Camera A, medium shot: the clerk, a woman with a grey perm, weighs his envelope on the scale.",
+     "speakers": []
+    },
+    {
+     "seconds": 2.5,
+     "text": "Close-up of <Subject 1>: he lifts his chin and holds a long pout at her through the glass.",
+     "speakers": []
+    },
+    {
+     "seconds": 2.5,
+     "text": "Close-up of the clerk: she slides a stamp under the glass very slowly.",
+     "speakers": []
+    },
+    {
+     "seconds": 2.5,
+     "text": "Camera A: in the queue a man in a cap shifts his parcel and stares at the feathers.",
+     "speakers": []
+    },
+    {
+     "seconds": 2,
+     "text": "Close-up of <Subject 1>: he presses the stamp on and stays at the counter, his eyes on the clerk.",
+     "speakers": []
+    }
+   ]
+  },
+  {
+   "name": "02_la-caisse",
+   "seed": 1002,
+   "character_refs": [
+    "m436",
+    "m609"
+   ],
+   "cuts": [
+    {
+     "seconds": 3,
+     "text": "A checkout of a French supermarket in 1987, the belt on the right, the queue on the left. Camera A, from the next till: <Subject 1> stands at the belt in his white fur coat; <Subject 2> waits behind him in his silver suit.",
+     "speakers": []
+    },
+    {
+     "seconds": 2.5,
+     "text": "Camera A, medium shot: the cashier types the price and looks up at the fur.",
+     "speakers": []
+    },
+    {
+     "seconds": 2.5,
+     "text": "Close-up of <Subject 1>: he counts out coins one by one, chin high, staring at her.",
+     "speakers": []
+    },
+    {
+     "seconds": 2.5,
+     "text": "Close-up of <Subject 2>: he pivots on his heel and holds a pout at the queue.",
+     "speakers": []
+    },
+    {
+     "seconds": 2.5,
+     "text": "Close-up of the cashier: she pushes the coins into her palm and looks at the queue.",
+     "speakers": []
+    },
+    {
+     "seconds": 2,
+     "text": "Camera A: the two stay at the end of the belt; the next customer waits with her trolley.",
+     "speakers": []
+    }
+   ]
+  }
+ ]
+}

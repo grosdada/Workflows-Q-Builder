@@ -22,13 +22,18 @@ FILES = [
     "workflows_q_builder_server.py",
     "queue_ltx_multishot.py",
     "queue_h3_multishot.py",
+    "queue_h3_orbital.py",
     "h3_director_build.py",
+    "h3_orbital_build.py",
+    "network_cluster.py",
+    "qbuilder_job_ledger.py",
     "Lancer_Workflows_Q_Builder.bat",
     "README.md",
     "CONTEXTE.md",
     # MiniMax H3
     "h3_director_api.json",
     "h3_t2v_api.json",
+    "h3_orbital_api.json",
     "h3_template_scout_v1.json",
     # LTX 2.5
     "ltx25_t2v_api.json",

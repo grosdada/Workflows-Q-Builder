@@ -116,6 +116,11 @@ def patch_api_workflow(workflow, settings, tdata, prefix):
 
     for _node_id, node in directors:
         inputs = node.setdefault("inputs", {})
+        # New Director versions require independent variant switches. Old API
+        # exports omit them; keep the single-pass default and preserve explicit
+        # values/connections from newer exports. Older workers ignore these keys.
+        for candidate in ("candidate_2", "candidate_3", "candidate_4"):
+            inputs.setdefault(candidate, False)
         # Constate l'etat AVANT de patcher : apres, toutes les cles existent
         # forcement puisqu'on les ecrit.
         unknown = [key for key in scalars if key not in inputs]

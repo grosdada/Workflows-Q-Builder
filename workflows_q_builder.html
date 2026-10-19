@@ -188,11 +188,15 @@
        Trois etats : LTX, H3 Director (CUTs + refs), H3 T2V simple (prompt). */
     body:not(.mode-h3) .h3-only,
     body:not(.mode-h3) .h3dir-only,
-    body:not(.mode-h3) .h3t2v-only { display: none !important; }
+    body:not(.mode-h3) .h3t2v-only,
+    body:not(.mode-h3) .h3orbit-only { display: none !important; }
     body.mode-h3 .ltx-only { display: none !important; }
     body.mode-h3:not(.engine-director) .h3dir-only { display: none !important; }
     body.mode-h3:not(.engine-t2v) .h3t2v-only { display: none !important; }
+    body.mode-h3:not(.engine-orbital) .h3orbit-only { display: none !important; }
+    body.mode-h3.engine-orbital .h3standard-only { display: none !important; }
     body.mode-h3.engine-director .prompt-only { display: none !important; }
+    body.mode-h3.engine-orbital .prompt-only { display: none !important; }
 
     /* LTX 2.5 pilote sa resolution par megapixels (ResolutionSelector), LTX 2.3
        par une taille en pixels : on n'affiche que le reglage qui agit vraiment. */
@@ -834,12 +838,13 @@
           <select id="h3Engine">
             <option value="director" selected>Director (CUTs + refs)</option>
             <option value="t2v">T2V simple (prompt)</option>
+            <option value="orbital">Orbital (image + trajectoire)</option>
           </select>
         </label>
         <label>
           Mode
           <select id="aiMode">
-            <option value="api">API OpenAI</option>
+            <option value="api">API fournisseur</option>
             <option value="local">LOCAL / Codex</option>
           </select>
         </label>
@@ -857,6 +862,7 @@
             <option value="openai" selected>OpenAI</option>
             <option value="anthropic">Anthropic (Claude)</option>
             <option value="google">Google (Gemini)</option>
+            <option value="deepseek">DeepSeek</option>
           </select>
         </label>
         <div class="field">
@@ -871,10 +877,17 @@
             <label for="apiModel">Modele</label>
             <button id="refreshModels" type="button">Rafraichir</button>
           </span>
-          <select id="apiModel"></select>
+          <select id="apiModel" aria-describedby="modelStatus"></select>
+          <p class="status" id="modelStatus" role="status" aria-live="polite"></p>
         </div>
       </div>
       <p class="status" id="askStatus"></p>
+      <details id="generationResponse" hidden>
+        <summary>Réponse reçue (pour récupération)</summary>
+        <textarea id="generationResponseText" readonly rows="10" aria-label="Réponse reçue du modèle" style="width:100%;margin:12px 0;white-space:pre-wrap"></textarea>
+        <button type="button" id="copyGenerationResponse">Copier la réponse</button>
+        <button type="button" id="applyGenerationResponse">Réappliquer aux slots sans appel API</button>
+      </details>
     </section>
 
     <dialog id="keyModal">
@@ -982,7 +995,7 @@
         </label>
       </div>
       <div class="h3-grid-4">
-        <label>
+        <label class="h3standard-only">
           Aspect ratio
           <select id="h3AspectRatio">
             <option value="16:9 (Widescreen)">16:9 (Widescreen)</option>
@@ -995,7 +1008,7 @@
             <option value="21:9 (Ultrawide)">21:9 (Ultrawide)</option>
           </select>
         </label>
-        <label>
+        <label class="h3standard-only">
           Megapixels
           <input id="h3Megapixels" type="number" min="0.1" max="4" step="0.1" value="0.8">
         </label>
@@ -1012,6 +1025,15 @@
           <input id="h3T2vShots" type="number" min="1" max="6" step="1" value="1">
         </label>
       </div>
+      <div class="h3-grid-4 h3orbit-only">
+        <label>Nombre d'images (24 i/s, 17k+5)
+          <select id="orbitLength"><option value="73" selected>73 images ≈ 3 s</option><option value="124">124 images ≈ 5 s</option><option value="175">175 images ≈ 7 s</option><option value="243">243 images ≈ 10 s</option><option value="345">345 images ≈ 14 s (risque RAM)</option></select>
+        </label>
+        <label>Megapixels Orbit <input id="orbitMegapixels" type="number" min="0.1" max="0.985" step="0.01" value="0.58"></label>
+        <label>Steps Orbit <input id="orbitSteps" type="number" min="1" max="100" step="1" value="28"></label>
+        <label>Préfixe de sortie <input id="orbitOutputPrefix" value="H3-Orbital/Q-Builder"></label>
+      </div>
+      <p class="h3-hint h3orbit-only">Orbit 360 boucle sur l'image de départ. « Pan 360 fixe » est expérimental : ce modèle ne garantit pas une rotation géométrique exacte. Une image de départ est obligatoire par scène ; les sheets sont facultatives.</p>
       <div class="h3-grid-4 h3dir-only">
         <label>
           Sampler
@@ -1117,6 +1139,7 @@
               <input id="h3T2vWorkflow" value="h3_t2v_api.json">
             </label>
           </div>
+          <div class="run-options h3orbit-only">Template H3-Orbital : h3_orbital_api.json. Images transférées aux workers par HTTP ; aucun ComfyUI local requis.</div>
           <div class="run-options ltx-only">
             <label>
               Workflow preset
@@ -1235,6 +1258,31 @@
         <div class="cuts-info"></div>
         <div class="h3-scene-refs"></div>
       </div>
+      <div class="h3orbit-only shot-h3">
+        <div class="h3-grid-4">
+          <label>Trajectoire
+            <select class="orbit-motion">
+              <option value="orbit360">Orbit 360° — boucle</option>
+              <option value="orbit360_reverse">Orbit 360° — sens inverse</option>
+              <option value="half-right">Demi-orbite à droite</option>
+              <option value="half-left">Demi-orbite à gauche</option>
+              <option value="quarter-push-right">Quart d'orbite + approche à droite</option>
+              <option value="quarter-push-left">Quart d'orbite + approche à gauche</option>
+              <option value="pan360">Pan 360° sur axe fixe (expérimental)</option>
+              <option value="custom">Trajectoire libre (prompt ci-dessous)</option>
+            </select>
+          </label>
+          <label>Images de cette scène <select class="orbit-length"><option value="global" selected>Réglage global</option><option value="73">73 ≈ 3 s</option><option value="124">124 ≈ 5 s</option><option value="175">175 ≈ 7 s</option><option value="243">243 ≈ 10 s</option><option value="345">345 ≈ 14 s</option></select></label>
+        </div>
+        <label>Image start (chemin local ou ID d'asset HTML) <input class="orbit-start" placeholder="Image de départ obligatoire"></label>
+        <input class="orbit-start-pick" type="file" accept="image/*" title="Choisir l'image start">
+        <label>Character sheet / vues personnage (0–4, un chemin ou ID par ligne) <textarea class="orbit-characters" placeholder="Facultatif : face, profil, dos, détail"></textarea></label>
+        <input class="orbit-characters-pick" type="file" accept="image/*" multiple title="Choisir les références personnage">
+        <label>Decor sheet / vues décor (0–4, un chemin ou ID par ligne) <textarea class="orbit-sets" placeholder="Facultatif : vues du décor"></textarea></label>
+        <input class="orbit-sets-pick" type="file" accept="image/*" multiple title="Choisir les références décor">
+        <label>Précisions du mouvement / du sujet <textarea class="orbit-prompt" placeholder="Mouvement constant, sans accélération ni décélération ; préserver la géométrie..."></textarea></label>
+        <div class="h3-scene-refs orbit-state"></div>
+      </div>
       <div class="shot-image-row ltx-only">
         <label>
           Image source ComfyUI
@@ -1313,7 +1361,7 @@
       "Director (CUTs + refs)": "Director (CUTs + refs)",
       "T2V simple (prompt)": "Simple T2V (prompt)",
       "Mode": "Mode",
-      "API OpenAI": "Provider API",
+      "API fournisseur": "Provider API",
       "LOCAL / Codex": "LOCAL / Codex",
       "Camera / Style preset": "Camera / style preset",
       "Remplir les shots": "Fill the shots",
@@ -1671,38 +1719,12 @@
 
     /* ------------------------------------------------- fournisseurs de LLM */
 
-    // Une cle par fournisseur : basculer d'OpenAI a Claude ne doit pas obliger
-    // a ressaisir quoi que ce soit. Les listes ci-dessous ne sont qu'un secours
-    // hors ligne — le bouton Rafraichir demande au fournisseur ce qui existe
-    // vraiment aujourd'hui, ce qui evite qu'elles perimenent en silence.
+    // Les modèles sont chargés depuis les API officielles avec la clé du fournisseur.
     const PROVIDERS = {
-      openai: {
-        label: "OpenAI",
-        keyPlaceholder: "sk-...",
-        keyPage: "platform.openai.com/api-keys",
-        // Secours si la liste en direct n'est pas disponible. Le bouton
-        // Rafraichir reste la verite : il ne montre que les modeles reels
-        // auxquels la cle API de cette personne a acces.
-        fallbackModels: [
-          "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.6",
-          "gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.4-nano", "gpt-4.1"
-        ],
-        defaultModel: "gpt-5.6-terra"
-      },
-      anthropic: {
-        label: "Anthropic (Claude)",
-        keyPlaceholder: "sk-ant-...",
-        keyPage: "console.anthropic.com/settings/keys",
-        fallbackModels: ["claude-opus-5", "claude-sonnet-5", "claude-fable-5", "claude-haiku-4-5-20251001"],
-        defaultModel: "claude-sonnet-5"
-      },
-      google: {
-        label: "Google (Gemini)",
-        keyPlaceholder: "AIza...",
-        keyPage: "aistudio.google.com/app/apikey",
-        fallbackModels: ["gemini-2.5-pro", "gemini-2.5-flash"],
-        defaultModel: "gemini-2.5-pro"
-      }
+      openai: { label: "OpenAI", keyPlaceholder: "sk-...", keyPage: "platform.openai.com/api-keys" },
+      anthropic: { label: "Anthropic (Claude)", keyPlaceholder: "sk-ant-...", keyPage: "console.anthropic.com/settings/keys" },
+      google: { label: "Google (Gemini)", keyPlaceholder: "AIza...", keyPage: "aistudio.google.com/app/apikey" },
+      deepseek: { label: "DeepSeek", keyPlaceholder: "sk-...", keyPage: "platform.deepseek.com/api_keys" }
     };
 
     const apiKeys = {};
@@ -1745,29 +1767,129 @@
       return key;
     }
 
+    // Catalogs are fetched from each provider; no baked-in model IDs.
+    const modelRequests = {};
+    const modelErrors = {};
     function populateModelSelect(models, keepValue = "") {
-      const select = document.querySelector("#apiModel");
-      const list = models && models.length ? models : providerConfig().fallbackModels;
-      const wanted = keepValue || modelCache[providerId() + ":selected"] || providerConfig().defaultModel;
-      select.innerHTML = list.map(model => `<option value="${model}">${model}</option>`).join("");
-      select.value = list.includes(wanted) ? wanted : list[0];
+      const id = providerId(), select = document.querySelector("#apiModel"), list = models || [];
+      const wanted = keepValue || modelCache[id + ":selected"] || "";
+      select.replaceChildren(new Option(list.length ? "Choisir un modèle…" : "Modèles non chargés", ""));
+      for (const model of list) select.add(new Option(model, model));
+      select.value = list.includes(wanted) ? wanted : "";
+      select.disabled = !list.length || !!modelRequests[id];
+      document.querySelector("#refreshModels").disabled = !!modelRequests[id];
     }
-
     function syncProviderUi() {
-      const config = providerConfig();
+      const id = providerId(), config = providerConfig(id);
       document.querySelector("#keyLabel").textContent = t("Cle API") + " " + config.label;
       document.querySelector("#keyModalTitle").textContent = t("Cle API") + " " + config.label;
       document.querySelector("#apiKeyInput").placeholder = config.keyPlaceholder;
       document.querySelector("#keyStatus").textContent = currentKey()
-        ? t("Cle stockee sur cet ordinateur")
+        ? t(store.get(keyStorageName(id)) ? "Cle stockee sur cet ordinateur" : "Cle chargee en memoire")
         : t("Aucune cle (") + config.keyPage + ")";
-      populateModelSelect(modelCache[providerId()]);
+      populateModelSelect(modelCache[id]);
+      const models = modelCache[id];
+      const message = modelRequests[id] ? `Chargement des modèles ${config.label}…`
+        : modelErrors[id] || (models?.length ? `${models.length} modèles ${config.label} chargés depuis l’API. Choisis un modèle.`
+        : `Ajoute une clé ${config.label} pour charger les modèles disponibles.`);
+      setStatus("#modelStatus", message, !!modelErrors[id]);
     }
+    async function fetchProviderModels(id, key, signal) {
+      const headers = providerHeaders(id, key), rows = [], seen = new Set();
+      let cursor = "";
+      for (let page = 0; page < 30; page++) {
+        let url = id === "anthropic" ? "https://api.anthropic.com/v1/models?limit=100"
+          : id === "google" ? "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200"
+          : id === "deepseek" ? "https://api.deepseek.com/models"
+          : "https://api.openai.com/v1/models";
+        if (cursor) url += (id === "anthropic" ? "&after_id=" : "&pageToken=") + encodeURIComponent(cursor);
+        const data = await readJsonOrThrow(await fetch(url, { headers, signal, cache: "no-store" }),
+          `Liste des modèles ${providerConfig(id).label} impossible`);
+        const items = id === "google" ? data.models : data.data;
+        if (!Array.isArray(items)) throw new Error("Le fournisseur a renvoyé un catalogue illisible. Réessaie avec Rafraîchir.");
+        rows.push(...items);
+        cursor = id === "anthropic" ? (data.has_more ? data.last_id : "") : id === "google" ? data.nextPageToken : "";
+        if (id === "anthropic" && data.has_more && !cursor) throw new Error("Pagination Anthropic incomplète : aucun curseur reçu.");
+        if (!cursor) break;
+        if (seen.has(cursor) || page === 29) throw new Error("Le catalogue reçu est incomplet. Réessaie avec Rafraîchir.");
+        seen.add(cursor);
+      }
+      let models;
+      const excluded = /(?:audio|realtime|transcrib|tts|image|embedding|moderation|live|robotics)/i;
+      if (id === "anthropic") {
+        models = rows.filter(item => item.lifecycle !== "retired" && /^claude-/.test(item.id || "")).map(item => item.id);
+      } else if (id === "google") {
+        models = rows.filter(item => (item.supportedGenerationMethods || []).includes("generateContent"))
+          .map(item => String(item.name || "").replace(/^models\//, ""))
+          .filter(name => name.startsWith("gemini-") && !excluded.test(name))
+          .sort((a, b) => b.localeCompare(a, "en", { numeric: true }));
+      } else if (id === "deepseek") {
+        models = rows.filter(item => typeof item.id === "string" && item.lifecycle !== "retired"
+          && (!Array.isArray(item.output_modalities) || item.output_modalities.includes("text"))).map(item => item.id);
+      } else {
+        const today = new Date().toISOString().slice(0, 10);
+        models = rows.filter(item => /^(?:gpt-|o[1-9])/.test(item.id || "")
+            && !excluded.test(item.id) && !/(?:instruct|search|deep-research)/i.test(item.id)
+            && (!item.shutdown_date || item.shutdown_date.slice(0, 10) > today))
+          .sort((a, b) => (Number(b.created) || 0) - (Number(a.created) || 0)
+            || b.id.localeCompare(a.id, "en", { numeric: true })).map(item => item.id);
+      }
+      const unique = [...new Set(models)];
+      return id === "google" ? unique : unique.slice(0, 5);
+    }
+    async function refreshProviderModels(force = false) {
+      const id = providerId(), key = apiKeys[id];
+      if (!key) {
+        modelErrors[id] = `Ajoute une clé ${providerConfig(id).label} avec Ajouter / changer.`;
+        syncProviderUi();
+        return;
+      }
+      if (!force && (modelRequests[id] || modelCache[id]?.length)) return;
+      modelRequests[id]?.abort();
+      const controller = new AbortController();
+      modelRequests[id] = controller;
+      delete modelErrors[id];
+      syncProviderUi();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+      try {
+        const models = await fetchProviderModels(id, key, controller.signal);
+        if (modelRequests[id] !== controller || apiKeys[id] !== key) return;
+        if (!models.length) throw new Error("Aucun modèle de génération de texte proposé par cette API pour cette clé.");
+        modelCache[id] = models;
+      } catch (error) {
+        if (modelRequests[id] !== controller || apiKeys[id] !== key) return;
+        delete modelCache[id];
+        modelErrors[id] = error.name === "AbortError" ? "Le chargement a dépassé 30 secondes. Réessaie avec Rafraîchir."
+          : error instanceof TypeError ? `Connexion à ${providerConfig(id).label} impossible (réseau ou blocage du navigateur). Vérifie la connexion puis clique Rafraîchir.`
+          : error.message;
+      } finally {
+        clearTimeout(timeout);
+        if (modelRequests[id] === controller) {
+          delete modelRequests[id];
+          if (providerId() === id) syncProviderUi();
+        }
+      }
+    }
+    function clearProviderModels(id) {
+      modelRequests[id]?.abort();
+      delete modelRequests[id];
+      delete modelCache[id];
+      delete modelErrors[id];
+    }
+
+
 
     async function readJsonOrThrow(response, what) {
       if (!response.ok) {
         const text = await response.text();
-        throw new Error(`${what} (${response.status}) ${text.slice(0, 240)}`);
+        let detail = "";
+        try { const data = JSON.parse(text); detail = String(data.error?.message || data.message || ""); } catch {}
+        for (const secret of Object.values(apiKeys)) if (secret) detail = detail.split(secret).join("[clé masquée]");
+        const advice = response.status === 401 ? "Vérifie la clé API de ce fournisseur."
+          : response.status === 403 ? "Cette clé ou ce projet n’a pas les droits nécessaires."
+          : response.status === 429 ? "Quota ou limite de requêtes atteint chez le fournisseur."
+          : response.status === 404 ? "Modèle absent ou accès indisponible pour ce projet. Rafraîchis la liste et choisis un modèle récent." : "";
+        throw new Error(`${what} (${response.status}). ${advice} ${detail.slice(0, 400)}`.trim());
       }
       return response.json();
     }
@@ -1789,38 +1911,8 @@
       return { "Content-Type": "application/json", "Authorization": `Bearer ${key}` };
     }
 
-    async function fetchProviderModels() {
-      const id = providerId();
-      const key = requireKey();
-      const headers = providerHeaders(id, key);
-      if (id === "anthropic") {
-        const data = await readJsonOrThrow(
-          await fetch("https://api.anthropic.com/v1/models?limit=100", { headers }),
-          "Liste des modeles Anthropic impossible"
-        );
-        return (data.data || []).map(item => item.id);
-      }
-      if (id === "google") {
-        const data = await readJsonOrThrow(
-          await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200", { headers }),
-          "Liste des modeles Gemini impossible"
-        );
-        return (data.models || [])
-          .filter(item => (item.supportedGenerationMethods || []).includes("generateContent"))
-          .map(item => String(item.name || "").replace(/^models\//, ""))
-          .filter(name => name.startsWith("gemini"));
-      }
-      const data = await readJsonOrThrow(
-        await fetch("https://api.openai.com/v1/models", { headers }),
-        "Liste des modeles OpenAI impossible"
-      );
-      return (data.data || [])
-        .map(item => item.id)
-        .filter(id => /^(gpt|o[1-9])/.test(id) && !/(audio|realtime|transcribe|tts|image|embedding|moderation)/.test(id))
-        .sort();
-    }
-
     function extractProviderText(id, data) {
+      if (id === "deepseek") return data.choices?.[0]?.message?.content || "";
       if (id === "anthropic") {
         return (data.content || []).filter(part => part.type === "text").map(part => part.text).join("\n");
       }
@@ -1832,10 +1924,13 @@
     }
 
     // content: soit une chaine, soit {text, imageDataUrl} pour le mode vision.
-    async function callProvider({ system, content, maxTokens = 9000 }) {
+    async function callProvider({ system, content, maxTokens = 9000, outputSchema = null }) {
       const id = providerId();
       const key = requireKey();
-      const model = document.querySelector("#apiModel").value || providerConfig().defaultModel;
+      const model = document.querySelector("#apiModel").value;
+      if (!model || modelRequests[id] || !modelCache[id]?.includes(model)) {
+        throw new Error("Charge les modèles avec Rafraîchir, puis choisis un modèle dans la liste.");
+      }
       const headers = providerHeaders(id, key);
       const text = typeof content === "string" ? content : content.text;
       const image = typeof content === "string" ? null : content.imageDataUrl;
@@ -1854,6 +1949,7 @@
         }
         blocks.push({ type: "text", text });
         body = { model, max_tokens: maxTokens, system, messages: [{ role: "user", content: blocks }] };
+        if (outputSchema) body.output_config = { format: { type: "json_schema", schema: outputSchema } };
       } else if (id === "google") {
         url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
         const parts = [];
@@ -1865,6 +1961,22 @@
           system_instruction: system ? { parts: [{ text: system }] } : undefined,
           contents: [{ role: "user", parts }],
           generationConfig: { maxOutputTokens: maxTokens }
+        };
+      } else if (id === "deepseek") {
+        url = "https://api.deepseek.com/chat/completions";
+        const userContent = imageParts
+          ? [{ type: "text", text }, { type: "image_url", image_url: { url: image } }]
+          : text;
+        body = {
+          model,
+          messages: [
+            ...(system ? [{ role: "system", content: system + (outputSchema ? "\nOutput JSON matching this schema: " + JSON.stringify(outputSchema) : "") }] : []),
+            { role: "user", content: userContent }
+          ],
+          max_tokens: maxTokens,
+          thinking: { type: "disabled" },
+          stream: false,
+          ...(outputSchema ? { response_format: { type: "json_object" } } : {})
         };
       } else {
         url = "https://api.openai.com/v1/responses";
@@ -1886,6 +1998,23 @@
         `${providerConfig().label} a refuse la demande`
       );
       const output = extractProviderText(id, data).trim();
+      if (outputSchema) retainGenerationResponse(output);
+      const truncated = id === "anthropic" ? data.stop_reason === "max_tokens" || data.stop_reason === "model_context_window_exceeded"
+        : id === "google" ? data.candidates?.[0]?.finishReason === "MAX_TOKENS"
+        : id === "deepseek" ? data.choices?.[0]?.finish_reason === "length"
+        : data.status === "incomplete";
+      if (outputSchema && truncated) {
+        revealGenerationResponse();
+        throw new Error("La réponse du modèle a été coupée avant la fin. Réduis le nombre de shots ou la longueur demandée. Les slots sont inchangés.");
+      }
+      if (outputSchema && id === "anthropic" && data.stop_reason === "refusal") {
+        revealGenerationResponse();
+        throw new Error("Le modèle a refusé cette demande. Consulte sa réponse ci-dessous et reformule la scène. Les slots sont inchangés.");
+      }
+      if (id === "deepseek" && ["content_filter", "insufficient_system_resource", "aborted"].includes(data.choices?.[0]?.finish_reason)) {
+        if (outputSchema) revealGenerationResponse();
+        throw new Error("DeepSeek a interrompu la réponse (" + data.choices[0].finish_reason + "). Les slots sont inchangés.");
+      }
       if (!output) throw new Error(`${providerConfig().label} n'a renvoye aucun texte.`);
       return output;
     }
@@ -1896,21 +2025,80 @@
       return { mimeType: match[1], data: match[2] };
     }
 
-    function parseJsonArrayFromModel(text) {
-      const cleaned = text
-        .replace(/^```json\s*/i, "")
-        .replace(/^```\s*/i, "")
-        .replace(/```\s*$/i, "")
-        .trim();
+    function shotGenerationSchema(count, director) {
+      const properties = { name: { type: "string" }, seed: { type: "integer" } };
+      if (director) {
+        properties.cuts = { type: "array", minItems: 1, items: {
+          type: "object", additionalProperties: false,
+          properties: { seconds: { type: "number" }, text: { type: "string" }, speakers: { type: "array", items: { type: "integer" } } },
+          required: ["seconds", "text", "speakers"]
+        } };
+      } else {
+        properties.positive = { type: "string" };
+      }
+      return { type: "object", additionalProperties: false, properties: {
+        shots: { type: "array", minItems: 1, description: `Exactly ${count} complete shots, in order.`,
+          items: { type: "object", properties, required: Object.keys(properties), additionalProperties: false } }
+      }, required: ["shots"] };
+    }
+
+    function retainGenerationResponse(text, show = false) {
+      const details = document.querySelector("#generationResponse");
+      const field = document.querySelector("#generationResponseText");
+      if (field) field.value = text;
+      if (details) { details.hidden = !text; details.open = show; }
+    }
+
+    function revealGenerationResponse() {
+      const field = document.querySelector("#generationResponseText");
+      if (field && field.value) retainGenerationResponse(field.value, true);
+    }
+
+    function parseJsonArrayFromModel(text, expectedCount = null, director = false) {
+      const cleaned = String(text).replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "").trim();
+      let parsed;
       try {
-        return JSON.parse(cleaned);
+        parsed = JSON.parse(cleaned);
       } catch {
-        // Certains modeles encadrent le JSON d'une phrase : on recupere le tableau.
+        // Preserve support for a complete legacy array surrounded by prose.
+        // Never invent quotes, close a cut-off array, or import partial shots.
         const start = cleaned.indexOf("[");
         const end = cleaned.lastIndexOf("]");
-        if (start >= 0 && end > start) return JSON.parse(cleaned.slice(start, end + 1));
-        throw new Error("Reponse du modele illisible : ce n'est pas un tableau JSON.");
+        try {
+          if (start < 0 || end <= start) throw new Error();
+          parsed = JSON.parse(cleaned.slice(start, end + 1));
+        } catch {
+          revealGenerationResponse();
+          throw new Error("La réponse du modèle contient un JSON invalide. Les slots sont inchangés. La réponse reçue est disponible ci-dessous pour récupération.");
+        }
       }
+      const rows = Array.isArray(parsed) ? parsed : parsed?.shots;
+      const fail = message => {
+        revealGenerationResponse();
+        throw new Error(message + " Les slots sont inchangés.");
+      };
+      if (!Array.isArray(rows) || !rows.length) fail("Le modèle n'a pas renvoyé une liste de shots complète.");
+      if (expectedCount !== null && rows.length !== expectedCount) fail(`Le modèle a renvoyé ${rows.length} shot(s) au lieu de ${expectedCount}.`);
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || typeof row !== "object" || Array.isArray(row) || typeof row.name !== "string" || !row.name.trim() || !Number.isSafeInteger(row.seed)) fail(`Le shot ${i + 1} doit contenir un nom et une seed entière valide.`);
+        if (director) {
+          if (!Array.isArray(row.cuts) || !row.cuts.length || row.cuts.some(cut => !cut || !Number.isFinite(cut.seconds) || cut.seconds <= 0 || typeof cut.text !== "string" || !cut.text.trim() || !Array.isArray(cut.speakers) || cut.speakers.some(speaker => !Number.isInteger(speaker) || speaker < 1))) fail(`Les CUTs du shot ${i + 1} sont incomplets.`);
+          const selected = h3SceneReferencesFor(getShotElements()[i], collectH3Characters(), null);
+          if (selected.errors.length) fail(`Les références du shot ${i + 1} sont invalides.`);
+          const subjectCount = selected.characters.filter(character => character.file).length;
+          const total = row.cuts.reduce((sum, cut) => sum + cut.seconds, 0);
+          if (total > H3_MAX_SECONDS) fail(`Le shot ${i + 1} dépasse ${H3_MAX_SECONDS} secondes.`);
+          for (const cut of row.cuts) {
+            if (/"[^"\n]+"/.test(cut.text) !== Boolean(cut.speakers.length)) fail(`Le shot ${i + 1} a un dialogue sans locuteur, ou un locuteur sans dialogue.`);
+            const tags = [...cut.text.matchAll(/<Subject\s+(\d+)>/g)].map(match => Number(match[1]));
+            if (tags.some(number => number < 1 || number > subjectCount) || cut.speakers.some(number => number > subjectCount)) fail(`Le shot ${i + 1} cite une image ou un locuteur absent de ses références.`);
+          }
+        } else if (typeof row.positive !== "string" || !row.positive.trim()) {
+          fail(`Le prompt du shot ${i + 1} est vide ou invalide.`);
+        }
+      }
+      return rows;
     }
 
     // H3 : plafond dur repris du skill muse-h3-director. Au-dela d'un chunk, le
@@ -2008,6 +2196,10 @@
 
     function isH3T2v() {
       return isH3() && getH3Engine() === "t2v";
+    }
+
+    function isH3Orbital() {
+      return isH3() && getH3Engine() === "orbital";
     }
 
     function renderH3Refs() {
@@ -2225,6 +2417,90 @@
       return path ? `--copy-results ${psSingleQuoted(path)}` : "";
     }
 
+    const ORBIT_MOTIONS = {
+      orbit360: { mode: "orbit", mirror: false },
+      orbit360_reverse: { mode: "orbit", mirror: true },
+      "half-right": { mode: "path", path_preset: "half-right" },
+      "half-left": { mode: "path", path_preset: "half-left" },
+      "quarter-push-right": { mode: "path", path_preset: "quarter-push-right" },
+      "quarter-push-left": { mode: "path", path_preset: "quarter-push-left" },
+      pan360: { mode: "path", prompt: "The camera remains fixed at exactly one position and rotates around its own vertical axis through a complete 360 degrees at constant angular speed, without orbiting or translating. No acceleration or deceleration. Preserve the same environment throughout." },
+      custom: { mode: "path" }
+    };
+
+    function orbitImagePath(raw, errors) {
+      const value = String(raw || "").trim();
+      if (!value) return "";
+      const asset = h3HtmlAssetLibrary.get(value);
+      if (asset) return asset.path;
+      if (/^[A-Za-z]:[\\/]|^\\\\/.test(value)) return value;
+      errors.push(`image Orbit inconnue: ${value} (charge un asset HTML ou choisis un fichier local)`);
+      return "";
+    }
+
+    function orbitImageList(raw, errors) {
+      return String(raw || "").split(/\r?\n/).map(value => value.trim()).filter(Boolean)
+        .map(value => orbitImagePath(value, errors)).filter(Boolean);
+    }
+
+    function collectOrbitScenes() {
+      const errors = [];
+      const prefix = (document.querySelector("#orbitOutputPrefix").value.trim() || "H3-Orbital/Q-Builder").replace(/[\\/]+$/, "");
+      const megapixels = Number(document.querySelector("#orbitMegapixels").value);
+      const steps = Number(document.querySelector("#orbitSteps").value);
+      if (!(megapixels > 0 && megapixels <= 0.985)) errors.push("Megapixels Orbit doit être entre 0 et 0,985.");
+      if (!Number.isInteger(steps) || steps < 1 || steps > 100) errors.push("Steps Orbit doit être entre 1 et 100.");
+      const scenes = getShotElements().map((shot, index) => {
+        const rawStart = shot.querySelector(".orbit-start").value.trim();
+        const rawPrompt = shot.querySelector(".orbit-prompt").value.trim();
+        const style = getShotStyleConfig(shot);
+        if (!rawStart && !rawPrompt
+          && !shot.querySelector(".orbit-characters").value.trim()
+          && !shot.querySelector(".orbit-sets").value.trim()) return null;
+        const name = h3SceneName(shot, index);
+        const motionKey = shot.querySelector(".orbit-motion").value;
+        const motion = ORBIT_MOTIONS[motionKey] || ORBIT_MOTIONS.orbit360;
+        const start = orbitImagePath(rawStart, errors);
+        if (!start) errors.push(`${name}: image start obligatoire.`);
+        const characters = orbitImageList(shot.querySelector(".orbit-characters").value, errors);
+        const sets = orbitImageList(shot.querySelector(".orbit-sets").value, errors);
+        if (characters.length > 4 || sets.length > 4) errors.push(`${name}: 4 références maximum par catégorie.`);
+        const localLength = shot.querySelector(".orbit-length").value;
+        const length = Number(localLength === "global" ? document.querySelector("#orbitLength").value : localLength);
+        const seed = Number(shot.querySelector(".shot-seed").value);
+        return {
+          id: name, mode: motion.mode, start_image: start,
+          character_refs: characters, set_refs: sets,
+          ...(motion.path_preset ? { path_preset: motion.path_preset } : {}),
+          ...(motion.mirror ? { mirror: true } : {}),
+          prompt: [motion.prompt, style?.value !== "none" ? style.prompt : "", rawPrompt].filter(Boolean).join(" "),
+          seed: Number.isSafeInteger(seed) && seed > 0 ? seed : 904231,
+          length, megapixels, steps,
+          output_prefix: `${prefix}/${String(index + 1).padStart(2, "0")}_${name}`
+        };
+      }).filter(Boolean);
+      return { scenes, errors };
+    }
+
+    function buildOrbitCommand() {
+      const folder = document.querySelector("#folder").value.trim();
+      const file = document.querySelector("#promptFile").value.trim() || "h3_orbital_queue.json";
+      const { scenes, errors } = collectOrbitScenes();
+      if (!folder || !scenes.length) {
+        setStatus("#status", "Orbit : ajoute au moins une scène et son image start.", true);
+        return "";
+      }
+      const summary = `${scenes.length} scène(s) H3-Orbital. ${scenes.reduce((sum, scene) => sum + scene.length, 0)} images à 24 i/s. `;
+      setStatus("#status", summary + (errors.length ? `À corriger : ${errors.slice(0, 3).join(" | ")}` : "Références prêtes pour upload HTTP."), errors.length > 0);
+      if (errors.length) return "";
+      return [
+        `cd ${psSingleQuoted(folder)}`,
+        `$scenes = @'`, JSON.stringify(scenes, null, 2), `'@`,
+        `Set-Content -LiteralPath ${psSingleQuoted(file)} -Value $scenes -Encoding UTF8`,
+        `${pythonCommand()} .\\queue_h3_orbital.py --scenes ${psSingleQuoted(file)} ${comfyServerArgs()}${copyResultsArg() ? ` ${copyResultsArg()}` : ""}`
+      ].join("\n");
+    }
+
     function buildH3Command() {
       const folder = document.querySelector("#folder").value.trim();
       const briefsFile = document.querySelector("#promptFile").value.trim() || "h3_custom_queue.json";
@@ -2240,19 +2516,19 @@
       }
 
       const issues = briefs.flatMap(brief => h3SceneIssues(brief).map(issue => `${brief.name}: ${issue}`));
-      const refs = collectH3Characters();
-      const withImages = refs.filter(character => character.file).length;
+      const imageCounts = briefs.map(brief => brief.characters.filter(character => character.file).length);
       const totalSeconds = briefs.reduce(
         (sum, brief) => sum + brief.cuts.reduce((inner, cut) => inner + cut.seconds, 0),
         0
       );
-      const summary = `${briefs.length} scene(s) H3, ${totalSeconds.toFixed(1)}s au total. Refs: ${withImages}/${refs.length} avec image. `
+      const summary = `${briefs.length} scene(s) H3, ${totalSeconds.toFixed(1)}s au total. Images par scene: ${imageCounts.join(', ')}. `
         + (queueMode ? "Sortie: file ComfyUI (API)." : `Sortie: fichiers .json dans ${outDir}.`);
       // Trois problemes affiches, le reste compte : une liste sans fin fait
       // defiler la ligne d'etat et on ne lit plus rien du tout.
       const shown = issues.slice(0, 3).join(" | ");
       const extra = issues.length > 3 ? ` (+${issues.length - 3} autres)` : "";
       setStatus("#status", issues.length ? `${summary} A corriger — ${shown}${extra}` : summary, issues.length > 0);
+      if (issues.length) return "";
 
       const args = [
         `--briefs ${psSingleQuoted(briefsFile)}`,
@@ -2329,6 +2605,11 @@
     function updateH3Hint() {
       const hint = document.querySelector("#h3Hint");
       if (!hint) return;
+      if (isH3Orbital()) {
+        hint.textContent = "H3-Orbital : image start obligatoire par scène ; jusqu'à 4 vues personnage et 4 vues décor facultatives. Les images sont envoyées par HTTP au worker choisi.";
+        hint.className = "h3-hint";
+        return;
+      }
       if (isH3T2v()) {
         hint.textContent = `H3 T2V natif : un prompt par scene, pas de refs ni de CUTs. Chaque scene est un job dans la file ComfyUI, ${H3_MAX_SECONDS}s maximum.`;
         hint.className = "h3-hint";
@@ -2348,7 +2629,8 @@
     const QUEUE_FILE_DEFAULTS = {
       ltx: "ltx_custom_queue.json",
       director: "h3_custom_queue.json",
-      t2v: "h3_t2v_queue.json"
+      t2v: "h3_t2v_queue.json",
+      orbital: "h3_orbital_queue.json"
     };
 
     function syncModelUi() {
@@ -2357,6 +2639,7 @@
       document.body.classList.toggle("mode-h3", h3);
       document.body.classList.toggle("engine-director", h3 && engine === "director");
       document.body.classList.toggle("engine-t2v", h3 && engine === "t2v");
+      document.body.classList.toggle("engine-orbital", h3 && engine === "orbital");
 
       // Le nom du fichier de file suit le mode tant que David ne l'a pas
       // personnalise : on ne remplace jamais une valeur qu'il a saisie.
@@ -2529,6 +2812,13 @@
       shot.querySelector(".shot-name").value = data?.name || `shot_${String(index + 1).padStart(2, "0")}`;
       shot.querySelector(".shot-seed").value = data?.seed || (1125119286042028 + index);
       shot.querySelector(".shot-prompt").value = data?.positive || "";
+      const orbit = data?.orbit || {};
+      shot.querySelector(".orbit-start").value = orbit.start_image || "";
+      shot.querySelector(".orbit-characters").value = (orbit.character_refs || []).join("\n");
+      shot.querySelector(".orbit-sets").value = (orbit.set_refs || []).join("\n");
+      shot.querySelector(".orbit-prompt").value = orbit.prompt || data?.positive || "";
+      shot.querySelector(".orbit-motion").value = ORBIT_MOTIONS[orbit.motion] ? orbit.motion : "orbit360";
+      shot.querySelector(".orbit-length").value = ["73", "124", "175", "243", "345"].includes(String(orbit.length)) ? String(orbit.length) : "global";
       if (shot.querySelector(".shot-style")) shot.querySelector(".shot-style").value = data?.style || "global";
       if (shot.querySelector(".shot-custom-style")) shot.querySelector(".shot-custom-style").value = data?.custom_style || data?.style_prompt || "";
       updateStyleCustomVisibility(shot);
@@ -2828,6 +3118,7 @@
     function buildCommand() {
       if (isH3Director()) return buildH3Command();
       if (isH3T2v()) return buildH3T2vCommand();
+      if (isH3Orbital()) return buildOrbitCommand();
       const folder = document.querySelector("#folder").value.trim();
       const workflow = resolveWorkflow();
       const promptFile = document.querySelector("#promptFile").value.trim() || "ltx_custom_queue.json";
@@ -2890,15 +3181,28 @@
     // dans CHAQUE cut (sinon H3 reprend le decor de la planche de reference du
     // personnage), et 15 s maximum par scene.
     function h3ContentRules() {
-      const characters = collectH3Characters();
-      const roster = characters.length
-        ? characters.map((character, index) => `<Subject ${index + 1}> = ${character.description || "(a decrire)"}`).join("; ")
-        : "aucun personnage declare : decris les gens de facon generique, sans tag <Subject N>";
-      return `Personnages declares: ${roster}. `
-        + `Ecris les tags <Subject N> en toutes lettres dans le texte des CUTs, jamais "the man" tout seul. `
-        + `Ancre le lieu dans CHAQUE cut, meme en gros plan. `
-        + `Total d'une scene: ${H3_MAX_SECONDS}s maximum, cuts de 2 a 6s. `
-        + `Dialogue entre guillemets droits dans le texte, et le ou les numeros de Subject qui parlent dans speakers.`;
+      const count = Math.max(1, Math.min(20, Number(document.querySelector("#shotCount").value) || 5));
+      const common = collectH3Characters();
+      const bindings = getShotElements().slice(0, count).map((shot, index) => {
+        const selected = h3SceneReferencesFor(shot, common, null);
+        if (selected.errors.length) throw new Error(`Prompt ${index + 1}: ${selected.errors.join("; ")}`);
+        const missing = selected.characters.some(character => !character.file);
+        if (missing) throw new Error(`Prompt ${index + 1}: complète les images manquantes avant de générer.`);
+        return { prompt: index + 1, subjects: selected.characters.map((character, i) => ({
+          tag: `<Subject ${i + 1}>`, image: i + 1,
+          description: character.description || "Appearance comes from the selected reference image; do not infer it from its filename."
+        })) };
+      });
+      return `Q-Builder structured HTML/Director rules: return complete ordered scene JSON only; no HTML, Markdown, invented files, image paths, asset IDs or session blob URLs. `
+        + `The application owns the image bindings; keep them unchanged. One shared image can belong to many scenes, and every scene can instead have its own independent set. `
+        + `Exact image bindings BY SCENE (numbering restarts at 1 for each scene): ${JSON.stringify(bindings)}. `
+        + `Use only the literal <Subject N> tags declared for that scene, in the given order. If none are declared, describe people generically without Subject tags. `
+        + `Anchor the location in EVERY cut, including close-ups; describe visible action and camera motion. Preserve reference identity and the requested style. `
+        + `Scene total: ${H3_MAX_SECONDS}s maximum, about 2–4s per cut; no cut-to/fade instructions. `
+        + `Dialogue uses straight quotes and its valid Subject numbers in speakers. Non-verbal sound is action/ambience, never quoted dialogue. No invented speakers. `
+        + `Unless the user explicitly requests audible dialogue, keep the scene without intelligible speech: no quoted words and speakers:[]. `
+        + `When dialogue is requested, only declared Subjects may speak. Every quoted line needs its matching speakers; a cut without quoted speech has speakers:[]. `
+        + `Write affirmative visible actions instead of negative instructions. Use the selected style; do not impose the Mode-Cringe/VHS recipe on other projects.`;
     }
 
     function h3T2vShotCount() {
@@ -2947,6 +3251,10 @@
       const styleNote = buildGenerationStyleNote();
       if (isH3T2v()) return h3T2vLocalRequest(ask, count, styleNote);
       if (isH3Director()) return h3DirectorLocalRequest(ask, count, styleNote);
+      if (isH3Orbital()) return `Prépare ${count} propositions de mouvement H3-Orbital pour : ${ask}\n\n${styleNote}`
+        + `Retourne uniquement un JSON array de {name, seed, positive}. Chaque positive est un prompt anglais décrivant le mouvement du sujet et de la caméra, en un seul plan continu, sans CUTs. `
+        + `N'invente pas d'image de départ ni de chemin : les images start et sheets restent celles déjà sélectionnées dans Q-Builder. Préserve l'identité et le décor des références. `
+        + `La trajectoire Orbit ou Path est choisie séparément dans l'interface.`;
       if (isLtx25()) {
         if (!hasAnyLinkedImage()) {
           return `Remplis mon Workflows Q-builder en mode LTX 2.5 avec ${count} generations text-to-video. Scene: ${ask}\n\n${styleNote}Retourne uniquement un JSON array avec les champs name, seed, positive. Chaque positive doit etre un seul paragraphe fluide au present, sans timestamps, sans bullet points, sans libelles Shot 1, sans crochets de timing. Integre sujet, lieu, action, camera, lumiere, style et audio dans la prose. Pas d image chargee: ne parle jamais d image source ou d image fournie.`;
@@ -2982,15 +3290,19 @@
         input: [
           {
             role: "system",
-            content: isH3Director()
-              ? "You generate JSON only for a MiniMax H3 Director queue. Output a JSON array only. Each item is one scene: {name, seed, cuts:[{seconds, text, speakers}]}. Scene text is English. Always write the literal tags <Subject 1>, <Subject 2> for declared characters, never a bare noun phrase. Anchor the location in every cut, including close-ups. Keep every scene at 15 seconds or less, cuts between 2 and 6 seconds. Put spoken lines in double quotes inside text and list the speaking Subject numbers in speakers."
+            content: isH3Orbital()
+              ? "You generate JSON only for MiniMax H3-Orbital camera-motion prompts. Output an array of {name, seed, positive}. Each positive is a single continuous English shot, preserving the supplied start image and optional reference sheets. Do not invent image paths, do not add cuts, and do not claim geometrically exact motion. The camera trajectory is selected separately in Q-Builder."
+              : isH3Director()
+              ? "You generate JSON only for a MiniMax H3 Director queue. Output a JSON array only. Each item is one scene: {name, seed, cuts:[{seconds, text, speakers}]}. Scene text is English. Use literal <Subject N> tags only for the references declared for that particular scene; a scene without reference images has no Subject tags. Anchor the location in every cut, including close-ups. Keep every scene at 15 seconds or less, cuts between 2 and 6 seconds. Put spoken lines in double quotes inside text and list the speaking Subject numbers in speakers."
               : (h3T2vShotCount() > 1
                 ? `You generate JSON only for a MiniMax H3 text-to-video queue. Output a JSON array only. Each item has name, seed, positive. Each positive is present-tense English and MUST contain exactly ${h3T2vShotCount()} shots separated by hard cuts, written as literal "[Shot 1] ...", "[Shot 2] At 00:0X.X, ..." segments with the timestamp of each cut, totalling ${h3T2vDuration()} seconds. Change framing, angle or shot size at every cut while keeping the same location, characters and lighting. Never write one continuous camera move instead of real cuts. No bullets.`
                 : "You generate JSON only for a MiniMax H3 text-to-video queue. Output a JSON array only. Each item has name, seed, positive. Each positive is one flowing present-tense English paragraph with subject, place, action, camera, light and sound. No timestamps, no shot labels, no bullets. One continuous scene of 15 seconds or less.")
           },
           {
             role: "user",
-            content: isH3Director()
+            content: isH3Orbital()
+              ? `Create ${count} H3-Orbital prompt variants for: ${ask}\n\n${styleNote}Use short filesystem-safe names and integer seeds. Describe visual continuity and motion only; Q-Builder keeps the already selected images and movement preset.`
+              : isH3Director()
               ? `Create ${count} MiniMax H3 Director scenes for this brief:\n${ask}\n\n${styleNote}${h3ContentRules()} Use short filesystem-safe names. Seeds must be integers.`
               : `Create ${count} MiniMax H3 text-to-video generations for this brief:\n${ask}\n\n${styleNote}Use short filesystem-safe names. Seeds must be integers. ${h3T2vShotCount() > 1 ? `Each generation must be cut into ${h3T2vShotCount()} shots of about ${(h3T2vDuration() / h3T2vShotCount()).toFixed(1)}s each, written as explicit [Shot n] segments with their timestamps.` : `Each generation is one continuous ${h3T2vDuration()}s take with no cut.`}`
           }
@@ -3022,8 +3334,15 @@
 
       const system = messages.input.find(item => item.role === "system")?.content || "";
       const user = messages.input.find(item => item.role === "user")?.content || "";
-      const text = await callProvider({ system, content: user, maxTokens: 9000 });
-      return parseJsonArrayFromModel(text);
+      const director = isH3Director();
+      const structured = ["anthropic", "deepseek"].includes(providerId());
+      const schema = shotGenerationSchema(count, director);
+      retainGenerationResponse("");
+      const text = await callProvider({
+        system: system + (structured ? '\nReturn one JSON object with a "shots" array containing all the requested shots. The output schema takes precedence over earlier array-only formatting instructions.' : ''),
+        content: user, maxTokens: 9000, outputSchema: schema
+      });
+      return parseJsonArrayFromModel(text, count, director);
     }
 
     function readFileAsDataUrl(file) {
@@ -3078,7 +3397,7 @@
     }
 
     function applyGeneratedShots(rows) {
-      const shotEls = getShotElements();
+      const shotEls = getShotElements().slice(0, rows.length);
       shotEls.forEach((shot, index) => {
         const currentImage = shot.querySelector(".shot-image").value.trim();
         const currentImagePath = shot.querySelector(".shot-image-path").value.trim();
@@ -3088,11 +3407,20 @@
         const currentThumb = shot.querySelector(".thumb").innerHTML;
         const currentPrompt = shot.querySelector(".shot-prompt").value.trim();
         const generated = rows[index] || {};
+        const currentOrbit = isH3Orbital() && rows[index] ? {
+          start_image: shot.querySelector(".orbit-start").value.trim(),
+          character_refs: shot.querySelector(".orbit-characters").value.trim().split(/\r?\n/).filter(Boolean),
+          set_refs: shot.querySelector(".orbit-sets").value.trim().split(/\r?\n/).filter(Boolean),
+          motion: shot.querySelector(".orbit-motion").value,
+          length: shot.querySelector(".orbit-length").value,
+          prompt: generated.positive || shot.querySelector(".orbit-prompt").value.trim()
+        } : null;
         const mergedPrompt = mergeGeneratedPromptWithExistingDescription(currentPrompt, generated.positive);
         fillShot(shot, {
           ...generated,
           image: generated.image || currentImage || currentDatasetImage,
           image_path: generated.image_path || currentImagePath || currentDatasetImagePath,
+          ...(isH3Orbital() && rows[index] ? { orbit: generated.orbit || currentOrbit } : {}),
           positive: mergedPrompt
         }, index);
         if (currentDatasetImage) shot.dataset.comfyImage = currentDatasetImage;
@@ -3160,8 +3488,9 @@
               // En schema qbuilder-html/v3, ces IDs sont locaux a UNE scene.
               // L'absence du champ conserve la compatibilite v2 (refs globales).
               character_refs: Array.isArray(item.character_refs) ? item.character_refs : undefined,
-              background_ref: typeof item.background_ref === "string" ? item.background_ref : undefined
-              })).filter(item => item.positive || item.cuts).slice(0, 20),
+              background_ref: typeof item.background_ref === "string" ? item.background_ref : undefined,
+              orbit: item.orbit && typeof item.orbit === "object" ? item.orbit : undefined
+              })).filter(item => item.positive || item.cuts || item.orbit).slice(0, 20),
               h3: Array.isArray(parsed) ? null : (parsed.h3 || parsed)
             };
           }
@@ -3319,7 +3648,7 @@
     }
 
     async function importH3HtmlAssets(h3) {
-      if (!h3 || !isH3Director()) return 0;
+      if (!h3 || (!isH3Director() && !isH3Orbital())) return 0;
       renderH3Refs();
       let imported = 0;
       const assets = h3HtmlAssetEntries(h3);
@@ -3340,6 +3669,7 @@
           });
           imported += 1;
         }
+        if (isH3Orbital()) return imported;
         // Les slots restent utiles comme inventaire visuel. Ils ne definissent
         // toutefois plus les refs d'une scene v3 : character_refs le fait.
         const characterIds = [...new Set(getShotElements().flatMap(shot => {
@@ -3360,6 +3690,7 @@
         document.querySelector("#h3BackgroundFile").value = "";
         document.querySelector("#h3BackgroundDescription").value = "";
       }
+      if (isH3Orbital()) return imported;
       const characters = Array.isArray(h3.characters) ? h3.characters : [];
       for (const [index, character] of characters.slice(0, H3_MAX_CHARACTERS).entries()) {
         const row = document.querySelector(`.h3-ref-row[data-index="${index}"]`);
@@ -3400,6 +3731,21 @@
     async function loadPromptsHtmlFile(file) {
       const raw = await file.text();
       const packet = extractPromptsFromHtml(raw);
+      if (packet.h3?.engine === "orbital") {
+        document.querySelector("#modelFamily").value = "h3";
+        document.querySelector("#h3Engine").value = "orbital";
+        syncModelUi();
+        h3HtmlAssetLibrary.clear();
+        const defaults = packet.h3.orbit_defaults || {};
+        if ([73, 124, 175, 243, 345].includes(Number(defaults.length)))
+          document.querySelector("#orbitLength").value = String(defaults.length);
+        if (Number(defaults.megapixels) > 0 && Number(defaults.megapixels) <= 0.985)
+          document.querySelector("#orbitMegapixels").value = String(defaults.megapixels);
+        if (Number.isInteger(Number(defaults.steps)) && Number(defaults.steps) > 0)
+          document.querySelector("#orbitSteps").value = String(defaults.steps);
+        if (typeof defaults.output_prefix === "string" && defaults.output_prefix.trim())
+          document.querySelector("#orbitOutputPrefix").value = defaults.output_prefix.trim();
+      }
       const rows = packet.rows;
       if (!rows.length) throw new Error("Aucun prompt detecte dans ce HTML.");
       const kept = Math.min(rows.length, 20);
@@ -3431,6 +3777,12 @@
       }
       applyGeneratedShots(rows);
       const importedImages = await importH3HtmlAssets(packet.h3);
+      // Les IDs d'assets Orbit ne deviennent des chemins locaux qu'APRES
+      // l'import asynchrone des data URLs. Recalculer la commande ici.
+      if (isH3Orbital()) {
+        document.querySelector("#command").value = buildCommand();
+        if (!document.querySelector("#command").value) return;
+      }
 
       // On compte ce qui a atterri dans le champ REELLEMENT visible du mode
       // courant. Compter les deux masquait un decalage de mode : une page de
@@ -3438,9 +3790,10 @@
       // et annoncait « 8 champs remplis » pendant que l'ecran restait vide.
       const wantsCuts = isH3Director();
       const shots = getShotElements();
-      const filled = shots.filter(shot => wantsCuts
-        ? shot.querySelector(".shot-cuts")?.value.trim()
-        : shot.querySelector(".shot-prompt").value.trim()).length;
+      const filled = shots.filter(shot => isH3Orbital()
+        ? shot.querySelector(".orbit-start")?.value.trim()
+        : wantsCuts ? shot.querySelector(".shot-cuts")?.value.trim()
+          : shot.querySelector(".shot-prompt").value.trim()).length;
 
       if (wantsCuts && !filled) {
         setStatus("#status", `${kept} prompt(s) lus, mais aucun ne contient de plans reconnaissables `
@@ -3581,6 +3934,7 @@
       "#h3StyleLine", "#h3Soundscape", "#h3Music",
       "#h3BackgroundFile", "#h3BackgroundDescription",
       "#h3OutputMode", "#h3TemplatePath", "#h3OutDir", "#h3Preview", "#h3T2vWorkflow"
+      , "#orbitLength", "#orbitMegapixels", "#orbitSteps", "#orbitOutputPrefix"
     ];
     h3Inputs.forEach(selector => {
       const element = document.querySelector(selector);
@@ -3617,13 +3971,14 @@
     const h3HtmlAssetLibrary = new Map();
 
     function h3SceneReferencesFor(shot, fallbackCharacters, fallbackBackground) {
+      const pendingErrors = shot.dataset.h3ImagesBusy ? ["Import des images de ce prompt en cours : attends la fin avant de lancer."] : [];
       if (!Object.hasOwn(shot.dataset, "h3CharacterRefs")) {
-        return { characters: fallbackCharacters, background: fallbackBackground, errors: [] };
+        return { characters: fallbackCharacters, background: fallbackBackground, errors: pendingErrors };
       }
       let ids = [];
       try { ids = JSON.parse(shot.dataset.h3CharacterRefs || "[]"); } catch {}
       ids = Array.isArray(ids) ? ids : [];
-      const errors = [];
+      const errors = [...pendingErrors];
       const characters = [];
       const seen = new Set();
       ids.forEach(rawId => {
@@ -4122,27 +4477,14 @@
 
     document.querySelector("#apiProvider").addEventListener("change", () => {
       syncProviderUi();
-      setStatus("#askStatus", currentKey()
-        ? `${providerConfig().label} pret.`
-        : `${providerConfig().label} : ajoute sa cle API (${providerConfig().keyPage}).`, !currentKey());
+      if (currentKey()) void refreshProviderModels();
     });
 
     document.querySelector("#apiModel").addEventListener("change", () => {
       modelCache[providerId() + ":selected"] = document.querySelector("#apiModel").value;
     });
 
-    document.querySelector("#refreshModels").addEventListener("click", async () => {
-      try {
-        setStatus("#askStatus", `Liste des modeles ${providerConfig().label} en cours...`);
-        const models = await fetchProviderModels();
-        if (!models.length) throw new Error("Le fournisseur n'a renvoye aucun modele utilisable.");
-        modelCache[providerId()] = models;
-        populateModelSelect(models);
-        setStatus("#askStatus", `${models.length} modeles ${providerConfig().label} charges.`);
-      } catch (error) {
-        setStatus("#askStatus", error.message, true);
-      }
-    });
+    document.querySelector("#refreshModels").addEventListener("click", () => { void refreshProviderModels(true); });
 
     document.querySelector("#openKeyModal").addEventListener("click", () => {
       document.querySelector("#apiKeyInput").value = "";
@@ -4159,6 +4501,7 @@
       }
       const id = providerId();
       const remember = document.querySelector("#rememberKey").checked;
+      clearProviderModels(id);
       apiKeys[id] = value;
       if (remember) {
         store.set(keyStorageName(id), value);
@@ -4171,20 +4514,60 @@
       setStatus("#askStatus", remember
         ? `Cle ${providerConfig().label} prete et stockee localement.`
         : `Cle ${providerConfig().label} prete. Elle n'est pas stockee.`);
+      void refreshProviderModels(true);
     });
 
     document.querySelector("#forgetKey").addEventListener("click", () => {
       const id = providerId();
+      clearProviderModels(id);
       delete apiKeys[id];
       store.remove(keyStorageName(id));
       document.querySelector("#apiKeyInput").value = "";
       document.querySelector("#rememberKey").checked = false;
       document.querySelector("#keyStatus").textContent = t("Aucune cle (") + providerConfig().keyPage + ")";
       document.querySelector("#keyModal").close();
+      syncProviderUi();
       setStatus("#askStatus", `Cle ${providerConfig().label} oubliee.`);
     });
 
+    document.querySelector("#applyGenerationResponse").addEventListener("click", () => {
+      if (generationInProgress) return;
+      try {
+        const count = Math.max(1, Math.min(20, Number(document.querySelector("#shotCount").value) || 5));
+        const rows = parseJsonArrayFromModel(document.querySelector("#generationResponseText").value, count, isH3Director());
+        applyGeneratedShots(rows);
+        const first = verifyGeneratedSlots(rows);
+        setStatus("#askStatus", rows.length + " prompt(s) réappliqués aux slots, sans nouvel appel API.");
+        first.scrollIntoView({ block: "center", behavior: "smooth" });
+      } catch (error) { setStatus("#askStatus", error.message, true); }
+    });
+
+    document.querySelector("#copyGenerationResponse").addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(document.querySelector("#generationResponseText").value);
+        setStatus("#askStatus", "Réponse copiée.");
+      } catch {
+        setStatus("#askStatus", "Copie indisponible : sélectionne le texte de la réponse pour le copier.", true);
+      }
+    });
+
+    let generationInProgress = false;
+    function generationTarget() {
+      return document.querySelector("#modelFamily").value + "/" + getH3Engine();
+    }
+    function verifyGeneratedSlots(rows) {
+      const selector = isH3Director() ? ".shot-cuts" : isH3Orbital() ? ".orbit-prompt" : ".shot-prompt";
+      const fields = getShotElements().slice(0, rows.length).map(shot => shot.querySelector(selector));
+      const filled = fields.filter(field => field && field.getClientRects().length && field.value.trim()).length;
+      if (filled !== rows.length) {
+        revealGenerationResponse();
+        throw new Error("Réponse reçue, mais " + filled + " slot(s) visible(s) rempli(s) sur " + rows.length + ". La réponse est conservée ci-dessous : aucun nouvel appel API nécessaire.");
+      }
+      return fields[0];
+    }
+
     document.querySelector("#askGenerate").addEventListener("click", async () => {
+      if (generationInProgress) return;
       const mode = document.querySelector("#aiMode").value;
       saveAskToHistory(
         document.querySelector("#askText").value,
@@ -4200,10 +4583,27 @@
           return;
         }
         const model = document.querySelector("#apiModel").value;
-        setStatus("#askStatus", `Generation via ${providerConfig().label} (${model})...`);
-        const rows = await generateWithApi();
-        applyGeneratedShots(rows);
-        setStatus("#askStatus", `${rows.length} ${isH3Director() ? "scene(s)" : "shots"} generes par ${model}.`);
+        const target = generationTarget();
+        const locked = ["#askGenerate", "#modelFamily", "#h3Engine", "#apiProvider", "#apiModel", "#refreshModels", "#aiMode", "#shotCount"];
+        const referenceControls = [...document.querySelectorAll('.h3-scene-image-controls input, .h3-scene-image-controls select, #h3Refs input, #h3Refs select, #h3Refs button, #loadPromptHtml')];
+        const oldStates = [...locked.map(selector => document.querySelector(selector)), ...referenceControls].map(element => [element, element.disabled]);
+        generationInProgress = true;
+        oldStates.forEach(([element]) => element.disabled = true);
+        try {
+          setStatus("#askStatus", `Generation via ${providerConfig().label} (${model})...`);
+          const rows = await generateWithApi();
+          if (target !== generationTarget()) {
+            revealGenerationResponse();
+            throw new Error("Le mode a changé pendant la génération. La réponse est conservée ci-dessous ; rétablis le mode initial puis réapplique-la.");
+          }
+          applyGeneratedShots(rows);
+          const first = verifyGeneratedSlots(rows);
+          setStatus("#askStatus", `${rows.length} ${isH3Director() ? "scène(s)" : "prompt(s)"} affichés dans les slots par ${model}.`);
+          first.scrollIntoView({ block: "center", behavior: "smooth" });
+        } finally {
+          generationInProgress = false;
+          oldStates.forEach(([element, disabled]) => element.disabled = disabled);
+        }
       } catch (error) {
         setStatus("#askStatus", error.message, true);
       }
@@ -4315,6 +4715,7 @@
       const index = getShotElements().indexOf(shot);
       if (event.target.classList.contains("shot-clear")) {
         fillShot(shot, { name: `shot_${String(index + 1).padStart(2, "0")}`, seed: 1125119286042028 + index, positive: "", clearCuts: true }, index);
+        document.querySelector("#command").value = buildCommand();
         setStatus("#status", `Shot ${index + 1} efface.`);
       }
       if (event.target.classList.contains("shot-copy")) {
@@ -4323,6 +4724,14 @@
           seed: shot.querySelector(".shot-seed").value.trim(),
           image: shot.querySelector(".shot-image").value.trim(),
           positive: shot.querySelector(".shot-prompt").value.trim(),
+          ...(isH3Orbital() ? { orbit: {
+            motion: shot.querySelector(".orbit-motion").value,
+            length: shot.querySelector(".orbit-length").value,
+            start_image: shot.querySelector(".orbit-start").value.trim(),
+            character_refs: shot.querySelector(".orbit-characters").value.trim().split(/\r?\n/).filter(Boolean),
+            set_refs: shot.querySelector(".orbit-sets").value.trim().split(/\r?\n/).filter(Boolean),
+            prompt: shot.querySelector(".orbit-prompt").value.trim()
+          }} : {}),
           style: shot.querySelector(".shot-style")?.value || "global",
           custom_style: shot.querySelector(".shot-custom-style")?.value.trim() || ""
         };
@@ -4345,6 +4754,10 @@
     });
 
     shots.addEventListener("input", (event) => {
+      if (event.target.matches(".orbit-start, .orbit-characters, .orbit-sets, .orbit-prompt")) {
+        if (isH3Orbital()) document.querySelector("#command").value = buildCommand();
+        return;
+      }
       if (event.target.classList.contains("shot-custom-style")) {
         document.querySelector("#command").value = buildCommand();
         return;
@@ -4364,6 +4777,37 @@
     });
 
     shots.addEventListener("change", async (event) => {
+      if (event.target.matches(".orbit-motion, .orbit-length")) {
+        document.querySelector("#command").value = buildCommand();
+        return;
+      }
+      if (event.target.matches(".orbit-start-pick, .orbit-characters-pick, .orbit-sets-pick")) {
+        const shot = event.target.closest(".shot");
+        const field = event.target.classList.contains("orbit-start-pick") ? shot.querySelector(".orbit-start")
+          : event.target.classList.contains("orbit-characters-pick") ? shot.querySelector(".orbit-characters")
+            : shot.querySelector(".orbit-sets");
+        const files = [...(event.target.files || [])];
+        try {
+          if (!location.protocol.startsWith("http")) throw new Error("Lance Q-Builder via le lanceur pour importer les images Orbit.");
+          const staged = [];
+          for (const file of files) {
+            const form = new FormData();
+            form.append("image", file);
+            form.append("filename_hint", file.name);
+            const response = await fetch("/api/upload", { method: "POST", body: form });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || `Upload local impossible (${response.status})`);
+            staged.push(data.path);
+          }
+          if (event.target.classList.contains("orbit-start-pick")) field.value = staged[0] || "";
+          else field.value = [field.value.trim(), ...staged].filter(Boolean).join("\n");
+          shot.querySelector(".orbit-state").textContent = `${staged.length} image(s) prêtes localement ; transfert au worker lors du lancement.`;
+          document.querySelector("#command").value = buildCommand();
+        } catch (error) {
+          setStatus("#status", error.message, true);
+        }
+        return;
+      }
       if (event.target.classList.contains("shot-style")) {
         updateStyleCustomVisibility(event.target.closest(".shot"));
         document.querySelector("#command").value = buildCommand();
@@ -4488,6 +4932,7 @@
 
     applyTheme(store.get(themeStorageKey) === "light" ? "light" : "dark");
     applyLanguage(LANG);
+    if (currentKey()) void refreshProviderModels();
 
     // Le dossier de travail vient du serveur, pas du HTML : l'app doit pouvoir
     // etre copiee telle quelle sur une autre machine, a un autre emplacement.
@@ -4549,6 +4994,138 @@
         setStatus("#status", `Dossier non detecte (${error.message}). Saisis-le a la main, ou ferme tout et relance par le .bat.`, true);
       }
     })();
+    // Per-scene image controls share the same reference contract as HTML v3.
+    (() => {
+      const panels = new WeakMap();
+      let pendingRefresh = false;
+      function catalog() {
+        document.querySelectorAll('.h3-ref-row').forEach((row, index) => {
+          const file = row.querySelector('.h3-ref-file').value.trim();
+          const id = `catalogue:${index + 1}`;
+          if (!file) { h3HtmlAssetLibrary.delete(id); return; }
+          h3HtmlAssetLibrary.set(id, {
+            path: row.dataset.stagedPath || file,
+            description: row.querySelector('.h3-ref-description').value.trim(),
+            retention: row.querySelector('.h3-ref-retention').value,
+            label: `Image ${index + 1} — ${file}`
+          });
+        });
+        return [...h3HtmlAssetLibrary].filter(([,asset]) => asset.path);
+      }
+      function selectedIds(shot) {
+        try { return JSON.parse(shot.dataset.h3CharacterRefs || '[]'); } catch { return []; }
+      }
+      function updateCommand() {
+        document.querySelector('#command').value = buildCommand();
+      }
+      function render(shot, assets) {
+        let panel = panels.get(shot);
+        if (!panel) {
+          panel = document.createElement('div');
+          panel.className = 'h3-scene-image-controls';
+          panel.style.cssText = 'margin:12px 0;padding:12px;border:1px solid #465263;border-radius:10px;';
+          panel.innerHTML = '<label>Images de ce prompt<select class="h3-scene-image-mode"><option value="common">Utiliser les images communes</option><option value="own">Choisir les images de ce prompt</option></select></label><div class="h3-scene-image-own" hidden><label>Ajouter des images pour ce prompt<input class="h3-scene-image-upload" type="file" accept="image/*" multiple></label><p>Ou cocher les images déjà chargées. Maximum 9 images par prompt.</p><div class="h3-scene-image-options" style="max-height:180px;overflow:auto;display:grid;gap:6px"></div></div><p class="h3-scene-image-summary" role="status" style="white-space:pre-line;margin:8px 0 0"></p>';
+          shot.querySelector('.h3dir-only.shot-h3').append(panel);
+          panels.set(shot, panel);
+        }
+        const own = Object.hasOwn(shot.dataset, 'h3CharacterRefs');
+        panel.querySelector('.h3-scene-image-mode').value = own ? 'own' : 'common';
+        panel.querySelector('.h3-scene-image-own').hidden = !own;
+        const ids = selectedIds(shot);
+        const options = panel.querySelector('.h3-scene-image-options');
+        const signature = JSON.stringify([assets.map(([id,a]) => [id,a.label || a.path]),ids]);
+        if (options.dataset.signature !== signature) {
+          options.replaceChildren();
+          for (const [id,asset] of assets) {
+            const label = document.createElement('label');
+            label.style.cssText = 'display:flex;gap:8px;align-items:center;font-weight:normal';
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox'; checkbox.className = 'h3-scene-image-choice';
+            checkbox.value = id; checkbox.checked = ids.includes(id);
+            checkbox.style.width = 'auto';
+            label.append(checkbox,document.createTextNode(asset.label || `${id} — ${asset.path.split(/[\\/]/).pop()}`));
+            options.append(label);
+          }
+          if (!assets.length) options.textContent = 'Aucune image chargée. Ajoutez des images ci-dessus ou dans le catalogue commun.';
+          options.dataset.signature = signature;
+        }
+        const refs = h3SceneReferencesFor(shot, collectH3Characters(), null);
+        const summary = panel.querySelector('.h3-scene-image-summary');
+        const text = shot.dataset.h3ImagesBusy ? 'Import des images en cours…' :
+          `${own ? 'Images propres à ce prompt' : 'Images communes'} : ${refs.characters.length} image(s).` +
+          refs.characters.map((entry,index) => `\n<Subject ${index + 1}> / image ${index + 1} : ${entry.description || (own ? h3HtmlAssetLibrary.get(ids[index])?.label : '') || entry.file.split(/[\\/]/).pop()}`).join('') +
+          (refs.errors.length ? '\n' + refs.errors.join('\n') : '');
+        if (summary.textContent !== text) summary.textContent = text;
+        panel.querySelectorAll('input,select').forEach(input => input.disabled = Boolean(shot.dataset.h3ImagesBusy) || generationInProgress);
+      }
+      function refresh() {
+        pendingRefresh = false;
+        const assets = catalog();
+        getShotElements().forEach(shot => render(shot,assets));
+      }
+      function schedule() {
+        if (!pendingRefresh) { pendingRefresh = true; queueMicrotask(refresh); }
+      }
+      shots.addEventListener('change', async event => {
+        const shot = event.target.closest('.shot');
+        if (!shot) return;
+        if (event.target.matches('.h3-scene-image-mode')) {
+          if (event.target.value === 'common') {
+            delete shot.dataset.h3CharacterRefs;
+            delete shot.dataset.h3BackgroundRef;
+          } else {
+            shot.dataset.h3CharacterRefs = '[]';
+          }
+          refresh(); updateCommand();
+        }
+        if (event.target.matches('.h3-scene-image-choice')) {
+          const ids = selectedIds(shot).filter(id => id !== event.target.value);
+          if (event.target.checked) ids.push(event.target.value);
+          shot.dataset.h3CharacterRefs = JSON.stringify(ids);
+          refresh(); updateCommand();
+        }
+        if (!event.target.matches('.h3-scene-image-upload')) return;
+        const files = [...(event.target.files || [])];
+        if (!files.length) return;
+        const ids = selectedIds(shot);
+        const summary = panels.get(shot).querySelector('.h3-scene-image-summary');
+        if (ids.length + files.length > H3_MAX_CHARACTERS) {
+          summary.textContent = `Maximum ${H3_MAX_CHARACTERS} images par prompt. La sélection précédente est conservée.`;
+          event.target.value = ''; return;
+        }
+        shot.dataset.h3ImagesBusy = '1'; refresh(); updateCommand();
+        try {
+          const imported = [];
+          for (const file of files) {
+            if (file.type && !file.type.startsWith('image/')) throw new Error('Choisissez uniquement des images.');
+            const id = `prompt:${crypto.randomUUID()}`;
+            const extension = file.name.match(/\.[A-Za-z0-9]+$/)?.[0] || '.png';
+            const form = new FormData();
+            // Unique names prevent two different Mac images named image.png
+            // from overwriting each other in the Windows staging directory.
+            form.append('image',file,`ref_${id.slice(7)}${extension}`);
+            form.append('project',h3ProjectName());
+            const response = await fetch('/api/h3-ref-upload',{method:'POST',body:form});
+            const data = await response.json();
+            if (!response.ok || !data.path) throw new Error(data.error || 'Import de référence impossible.');
+            imported.push([id,{path:data.path,label:`Prompt ${getShotElements().indexOf(shot) + 1} — ${file.name}`,description:'',retention:'fully_preserved'}]);
+          }
+          for (const [id,asset] of imported) h3HtmlAssetLibrary.set(id,asset);
+          shot.dataset.h3CharacterRefs = JSON.stringify([...ids,...imported.map(([id]) => id)]);
+          delete shot.dataset.h3ImagesBusy; refresh(); updateCommand();
+        } catch (error) {
+          delete shot.dataset.h3ImagesBusy; refresh(); updateCommand();
+          summary.textContent = `${error.message} La sélection précédente est conservée.`;
+        } finally { event.target.value = ''; }
+      });
+      const observer = new MutationObserver(schedule);
+      observer.observe(shots,{attributes:true,subtree:true,attributeFilter:['data-h3-character-refs','data-h3-background-ref']});
+      observer.observe(document.querySelector('#h3Refs'),{childList:true,subtree:true});
+      document.querySelector('#h3Refs').addEventListener('input',schedule);
+      document.querySelector('#h3Refs').addEventListener('change',schedule);
+      refresh();
+    })();
+
   </script>
 </body>
 </html>

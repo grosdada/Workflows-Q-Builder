@@ -23,3 +23,11 @@ ltx25_t2v_16mm73_J7_ui_reference.json
 # precedente. Propres a chaque machine, jamais partages.
 VERSION.json
 _backup_previous/
+
+# Private job history, cluster test payloads, and generated skill bundles.
+qbuilder_jobs.json
+ltx_cluster_test_queue.json
+prompt-html-export-update/
+*.zip
+# Existing prompt-html-export.skill is a tracked distribution artifact.
+*.skill
