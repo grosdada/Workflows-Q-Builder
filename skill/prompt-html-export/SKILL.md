@@ -9,6 +9,12 @@ Workflows Q-builder sait charger une page HTML de prompts et les repartir dans
 ses champs. Ce skill dit comment ecrire la page pour que ca marche a tous les
 coups, au lieu de laisser l'app deviner.
 
+Pour les fonctions H3 Director recentes (noms par scene, castings, decor,
+chargement HTML, API et copie des sorties), lire
+`references/fonctions-recentes-qbuilder.md` avant de preparer un lot. Pour
+H3 Orbital, utiliser le skill distinct `skill/h3-orbital-html/SKILL.md` du
+depot : son schema n'est pas celui de Director.
+
 ## La regle qui evite le probleme
 
 **Toujours embarquer un bloc JSON dans la page.** L'app le cherche en premier et
@@ -117,6 +123,7 @@ les images dans les scenes elles-memes.
   },
   "scenes": [{
     "name": "01_alice_bruno",
+    "output_name": "h3_queue_01_01_alice_bruno_B",
     "character_refs": ["alice", "bruno"],
     "background_ref": "decor_bureau",
     "cuts": [{"seconds": 5, "text": "<Subject 1> speaks to <Subject 2>.", "speakers": [1]}]
@@ -140,6 +147,17 @@ optionnel. La limite de 9 references s'applique a une scene, pas a `assets`.
 
 Le schema v2 (`characters` et `background` a la racine) reste adapte lorsqu'un
 batch entier partage le meme casting ; il reste compatible.
+
+Pour une suite `_B`, donner a **chaque scene** un `output_name` explicite,
+egal au nom de base du film original plus `_B`, sans `_00001-audio.mp4`. Exemple :
+`h3_queue_01_01_le_garage_de_nuit_00001-audio.mp4` devient
+`output_name: "h3_queue_01_01_le_garage_de_nuit_B"`, puis Q-Builder ecrit
+`h3_queue_01_01_le_garage_de_nuit_B_00001-audio.mp4`. Le prefixe `api_01_`
+n'est pas ajoute. Casse et tirets sont conserves ; les caracteres interdits
+sont remplaces par `_` avec `safe_slug`. Un nom de sortie doit etre unique
+dans la page. Le chargement par « Load prompts HTML » et l'API respectent
+le meme champ ; toujours verifier `output_name` dans `validate` et dans le
+dry-run avant de lancer les suites.
 
 ## H3 Director : fabriquer la page avec le script (methode a suivre)
 
@@ -250,6 +268,7 @@ Un tableau d'objets, 20 elements maximum (l'app a 20 emplacements).
 | `custom_style` | non | texte du style si `style` vaut `"custom"` |
 | `character_refs` | H3 v3 | IDs des assets, dans l'ordre local des `<Subject N>` |
 | `background_ref` | H3 v3 | ID de l'asset decor pour cette scene |
+| `output_name` | non, H3 v3 | nom de base de sortie de cette scene, sans extension ni prefixe ajoute |
 
 `name` doit etre court et sans caractere exotique : minuscules, chiffres,
 tirets bas. Numeroter dans l'ordre de lecture (`01_`, `02_`…) — c'est ce qui
@@ -289,3 +308,54 @@ nombres doivent etre egaux. En v3, verifier aussi que chaque ID cite par
 chaque CUT a guillemets a des `speakers` (et qu'aucun figurant ne parle). Un prompt present a
 l'ecran mais absent du JSON ne sera jamais charge, et c'est invisible a la
 lecture de la page.
+
+## Pilotage par API locale (H3 Director)
+
+Quand David demande de **lancer** ou **surveiller** un HTML H3 Director depuis
+Claude, utiliser la même origine que l'onglet Q-Builder, normalement
+`http://127.0.0.1:8790/qbuilder`. L'API du serveur lit directement le fichier
+HTML ; aucun sélecteur de fichier Windows ni commande PowerShell n'est requis.
+Elle accepte uniquement `qbuilder-html/v3` avec `model: "h3-director"` et des
+images `data_url`. Ne pas l'utiliser pour H3 Orbital ou LTX.
+
+Le poste de commande doit autoriser les répertoires source et de copie dans
+`local_settings.json`, clé `api_allowed_roots`. Les chemins mappés et UNC sont
+acceptés seulement sous ces racines. Ne jamais contourner un refus de chemin.
+
+Depuis la page Q-Builder :
+
+```js
+const html_path = 'Y:\\project\\mon-film\\H3-Director_batch.html';
+const post = (route, body) => fetch(route, {
+  method: 'POST', headers: {'Content-Type':'application/json'},
+  body: JSON.stringify(body)
+}).then(r => r.json());
+const validation = await post('/api/batch/validate', {html_path});
+const settings = await fetch('/api/settings/effective').then(r => r.json());
+const dry = await post('/api/batch', {html_path, scenes:'01', dry_run:true});
+const batch = await post('/api/batch', {html_path, scenes:'01', workers:'auto',
+  copy_results:'Y:\\project\\mon-film\\copies'});
+const status = await fetch(`/api/batch/${batch.batch_id}`).then(r => r.json());
+const recent = await fetch('/api/batches?limit=20').then(r => r.json());
+// Exemples independants : annuler un prompt en attente OU relancer un echec.
+const stopped = await post(`/api/batch/${batch.batch_id}/cancel`, {scenes:'01'});
+const resumed = await post(`/api/batch/${batch.batch_id}/retry`,
+  {scenes:['01_intro'], workers:'auto'});
+```
+
+`html_path` peut être remplacé par `prompts` contenant le JSON v3 directement.
+`scenes` vaut `all`, une plage comme `01,03-05`, ou une liste de noms.
+`workers` vaut `auto` (workers activés) ou une liste de noms. `settings_override`
+peut fixer `megapixels`, `steps`, `aspect_ratio`, `sampler_name`, `scheduler` et
+`ref_image_size`. Sans `copy_results`, l'API reprend la case et le chemin de
+l'interface ouverte ; `copy_results: ""` désactive la copie. Avant un vrai
+batch, toujours contrôler `validation.ok`, `validation.errors`, les réglages
+effectifs et le dry-run. `POST /api/batch` répond avant la fin des rendus ;
+interroger ensuite le statut. Les originaux restent sur les workers.
+
+Les erreurs JSON ont `ok:false`, `error` et `details` : `400` entrée invalide,
+`403` origine ou chemin non autorisé, `404` fichier/batch absent, `409` action
+impossible sur l'état courant, `413` données trop volumineuses, `422` scène
+invalide (notamment >15 s, ref absente ou dialogue sans speakers), `503` aucun
+worker disponible. Ne jamais annoncer un résultat copié avant `status:done`
+et un chemin `outputs[].local` non vide.

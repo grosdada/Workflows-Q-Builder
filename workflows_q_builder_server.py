@@ -14,6 +14,7 @@ import argparse
 import base64
 import json
 import mimetypes
+import re
 import shutil
 import socket
 import ssl
@@ -27,6 +28,7 @@ import urllib.request
 import uuid
 import webbrowser
 import zipfile
+import qbuilder_batch_api as batch_api
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -61,8 +63,13 @@ def local_settings():
     except (OSError, json.JSONDecodeError):
         print("local_settings.json illisible, ignore")
         return {}
-    allowed = ("workflow_browse_path", "comfy_server", "comfy_input", "update_repo", "results_copy_path")
+    allowed = ("workflow_browse_path", "comfy_server", "comfy_input", "update_repo", "results_copy_path", "h3_style_preset", "h3_style_prompt", "h3_style_line")
     result = {key: data[key] for key in allowed if isinstance(data.get(key), str) and data[key]}
+    if isinstance(data.get("api_allowed_roots"), list):
+        result["api_allowed_roots"] = [value for value in data["api_allowed_roots"] if isinstance(value, str)]
+    if isinstance(data.get("h3_api_defaults"), dict):
+        result["h3_api_defaults"] = data["h3_api_defaults"]
+    result["api_copy_results_enabled"] = data.get("api_copy_results_enabled") is True
     nodes = data.get("comfy_nodes")
     if isinstance(nodes, list):
         result["comfy_nodes"] = [
@@ -354,6 +361,23 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/settings/effective":
+            self.send_json(batch_api.effective(local_settings(), probe_comfy_node))
+            return
+        if parsed.path == "/api/batches":
+            try:
+                limit = (parse_qs(parsed.query).get("limit") or ["20"])[0]
+                self.send_json(batch_api.batches(limit))
+            except (ValueError, batch_api.BatchError) as exc:
+                self.send_json({"ok": False, "error": str(exc), "details": []}, 400)
+            return
+        match = re.fullmatch(r"/api/batch/([0-9a-f-]{36})", parsed.path)
+        if match:
+            try:
+                self.send_json(batch_api.detail(match.group(1)))
+            except batch_api.BatchError as exc:
+                self.send_json({"ok": False, "error": str(exc), "details": exc.details}, exc.status)
+            return
         if parsed.path in {"/", "/" + APP_HTML}:
             self.send_file(ROOT / APP_HTML)
             return
@@ -417,6 +441,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        if parsed.path in {"/api/batch/validate", "/api/batch", "/api/settings/h3"} or re.fullmatch(
+                r"/api/batch/[0-9a-f-]{36}/(?:cancel|retry)", parsed.path):
+            self.handle_batch_api(parsed.path)
+            return
         if parsed.path == "/api/upload":
             self.handle_upload()
             return
@@ -445,6 +473,55 @@ class Handler(BaseHTTPRequestHandler):
             self.handle_job_recovery()
             return
         self.send_error(404)
+
+    def handle_batch_api(self, path):
+        """Batch API is same-origin only, including on the 8790 wrapper."""
+        host = self.headers.get("Host", "")
+        origin = self.headers.get("Origin", "")
+        if (not re.fullmatch(r"(?:127\.0\.0\.1|localhost):\d+", host)
+                or (origin and origin not in {f"http://{host}", f"https://{host}"})
+                or self.headers.get("Sec-Fetch-Site", "same-origin") not in {"same-origin", "none"}):
+            self.send_json({"ok": False, "error": "Origine locale requise.", "details": []}, 403)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            if length < 0 or length > 64 * 1024 * 1024:
+                raise batch_api.BatchError("Corps JSON trop volumineux (64 Mo maximum).", 413)
+            payload = json.loads(self.rfile.read(length)) if length else {}
+            if not isinstance(payload, dict):
+                raise batch_api.BatchError("Objet JSON attendu.")
+            settings = local_settings()
+            if path == "/api/settings/h3":
+                defaults = payload.get("defaults") or {}
+                if not isinstance(defaults, dict) or set(defaults) - batch_api.ALLOWED_OVERRIDES:
+                    raise batch_api.BatchError("Reglages H3 non autorises.")
+                style = payload.get("style_preset") or ""
+                if not isinstance(style, str) or len(style) > 500:
+                    raise batch_api.BatchError("Preset style invalide.")
+                path_settings = ROOT / "local_settings.json"
+                current = json.loads(path_settings.read_text(encoding="utf-8-sig")) if path_settings.exists() else {}
+                current["h3_api_defaults"] = defaults
+                current["h3_style_preset"] = style
+                current["h3_style_prompt"] = str(payload.get("style_prompt") or "")[:2000]
+                current["h3_style_line"] = str(payload.get("style_line") or "")[:2000]
+                current["api_copy_results_enabled"] = payload.get("copy_results_enabled") is True
+                path_settings.write_text(json.dumps(current, ensure_ascii=False, indent=2), encoding="utf-8")
+                self.send_json({"ok": True})
+            elif path == "/api/batch/validate":
+                report, _ = batch_api.validate(payload, settings)
+                self.send_json(report, 200 if report["ok"] else 422)
+            elif path == "/api/batch":
+                self.send_json(batch_api.start(payload, settings), 202 if not payload.get("dry_run") else 200)
+            else:
+                match = re.fullmatch(r"/api/batch/([0-9a-f-]{36})/(cancel|retry)", path)
+                batch_id, action = match.groups()
+                result = (batch_api.cancel(batch_id, payload) if action == "cancel"
+                          else batch_api.retry(batch_id, payload, settings))
+                self.send_json(result)
+        except batch_api.BatchError as exc:
+            self.send_json({"ok": False, "error": str(exc), "details": exc.details}, exc.status)
+        except (ValueError, UnicodeDecodeError, TypeError) as exc:
+            self.send_json({"ok": False, "error": f"JSON invalide : {exc}", "details": []}, 400)
 
     def handle_session_close(self, query):
         """Oublie un onglet Q-Builder ferme sans confondre un onglet masque

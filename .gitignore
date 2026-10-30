@@ -26,6 +26,7 @@ _backup_previous/
 
 # Private job history, cluster test payloads, and generated skill bundles.
 qbuilder_jobs.json
+qbuilder_api_batches.json
 ltx_cluster_test_queue.json
 prompt-html-export-update/
 *.zip

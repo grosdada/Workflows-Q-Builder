@@ -771,6 +771,32 @@
         grid-template-columns: 34px minmax(0, 1fr) 132px;
       }
     }
+
+    .cluster-toolbar { display: flex; justify-content: flex-end; margin-bottom: 14px; }
+    .cluster-menu { position: relative; width: min(380px, 100%); color: var(--text); }
+    .cluster-menu summary { list-style: none; display: flex; gap: 10px; align-items: center;
+      padding: 11px 13px; border: 1px solid var(--line); border-radius: 8px;
+      background: var(--panel); cursor: pointer; font-size: 13px; font-weight: 600; }
+    .cluster-menu summary::-webkit-details-marker { display: none; }
+    .cluster-menu summary::after { content: "▾"; margin-left: auto; color: var(--muted); }
+    .cluster-menu[open] summary::after { content: "▴"; }
+    .cluster-menu summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+    .cluster-menu-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: 0 0 auto; }
+    .cluster-menu[data-state="active"] .cluster-menu-dot { background: #51ca91; }
+    .cluster-menu[data-state="partial"] .cluster-menu-dot { background: #e4b95b; }
+    .cluster-menu[data-state="error"] .cluster-menu-dot { background: #ec7979; }
+    .cluster-menu-body { position: absolute; top: calc(100% + 7px); right: 0; z-index: 50;
+      width: 100%; box-sizing: border-box; border: 1px solid var(--line); border-radius: 10px;
+      background: var(--panel); padding: 14px; box-shadow: 0 16px 35px #0005; }
+    .cluster-menu-title { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .cluster-menu-title button { font-size: 12px; min-height: 30px; padding: 5px 9px; }
+    .cluster-menu-list { padding: 0; margin: 8px 0; list-style: none; max-height: 340px; overflow-y: auto; }
+    .cluster-menu-row { display: flex; gap: 10px; justify-content: space-between; align-items: center;
+      padding: 11px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+    .cluster-menu-row strong { overflow-wrap: anywhere; }
+    .cluster-menu-counts { text-align: right; flex: 0 0 auto; color: var(--muted); line-height: 1.7; }
+    .cluster-menu-counts .has-running { color: var(--accent); font-weight: 700; }
+    .cluster-menu-note { color: var(--muted); font-size: 11px; line-height: 1.5; margin: 8px 0 0; }
   </style>
 </head>
 <body>
@@ -801,6 +827,16 @@
     </header>
 
     <section class="ask panel">
+      <div class="cluster-toolbar">
+        <details class="cluster-menu" id="clusterMonitor" data-state="loading">
+          <summary><span class="cluster-menu-dot" aria-hidden="true"></span><span id="clusterMonitorSummary" role="status" aria-live="polite">Calculs : chargement…</span></summary>
+          <div class="cluster-menu-body">
+            <div class="cluster-menu-title"><strong id="clusterMonitorTitle">Calculs par PC</strong><button type="button" id="refreshClusterMonitor">Actualiser</button></div>
+            <ul class="cluster-menu-list" id="clusterMonitorList"></ul>
+            <p class="cluster-menu-note" id="clusterMonitorNote">Chargement des files ComfyUI…</p>
+          </div>
+        </details>
+      </div>
       <div class="ask-grid">
         <div class="field">
           <span class="ask-title-row">
@@ -960,9 +996,11 @@
         <button id="refreshCluster" type="button">Actualiser les PC</button>
         <button id="inspectJobs" type="button">Diagnostiquer les jobs</button>
         <button id="recoverJobs" type="button">Reprendre les jobs perdus</button>
+        <button id="refreshApiBatches" type="button">Batchs API</button>
       </div>
       <div class="cluster-cards" id="clusterCards"><div class="cluster-meta">Chargement du cluster…</div></div>
       <p class="status" id="jobRecoveryStatus"></p>
+      <div id="apiBatchList" class="cluster-meta" aria-live="polite"></div>
     </section>
 
     <section class="h3-panel panel h3-only">
@@ -1705,6 +1743,7 @@
       if (typeof syncProviderUi === "function") syncProviderUi();
       if (typeof updateAllCutsInfo === "function") updateAllCutsInfo();
       if (typeof updateH3Hint === "function" && isH3()) updateH3Hint();
+      if (typeof renderClusterMonitor === "function") renderClusterMonitor();
       if (typeof buildCommand === "function") {
         const command = document.querySelector("#command");
         if (command && command.value) command.value = buildCommand();
@@ -2328,6 +2367,8 @@
         const { cuts } = parseCutLines(shot.querySelector(".shot-cuts")?.value);
         if (!cuts.length) return null;
         const name = h3SceneName(shot, index);
+        const importedOutput = shot.dataset.h3OutputName || "";
+        const safeOutput = importedOutput.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "");
         const seedValue = Number(shot.querySelector(".shot-seed").value.trim());
         const selected = h3SceneReferencesFor(shot, fallbackCharacters, background);
         return {
@@ -2335,8 +2376,12 @@
           settings: {
             ...settingsBase,
             seed: Number.isFinite(seedValue) && seedValue > 0 ? Math.floor(seedValue) : 100,
-            output_name: `${outputBase}_${String(index + 1).padStart(2, "0")}_${name}`
+            output_name: importedOutput && safeOutput && ![".", ".."].includes(safeOutput)
+              ? `Muse/Video/${safeOutput}`
+              : `${outputBase}_${String(index + 1).padStart(2, "0")}_${name}`
           },
+          html_output_error: shot.dataset.h3OutputInvalid || (importedOutput && (!safeOutput || [".", ".."].includes(safeOutput))
+            ? `output_name HTML invalide: ${importedOutput}` : ""),
           style_line: h3StyleLineFor(shot),
           dialogue_language: dialogueLanguage,
           overall_soundscape: soundscape,
@@ -2351,6 +2396,7 @@
 
     function h3SceneIssues(brief) {
       const issues = [];
+      if (brief.html_output_error) issues.push(brief.html_output_error);
       issues.push(...(brief.html_asset_errors || []));
       const total = brief.cuts.reduce((sum, cut) => sum + cut.seconds, 0);
       if (total > H3_MAX_SECONDS) {
@@ -2516,6 +2562,12 @@
       }
 
       const issues = briefs.flatMap(brief => h3SceneIssues(brief).map(issue => `${brief.name}: ${issue}`));
+      const outputNames = new Set();
+      briefs.forEach(brief => {
+        const outputName = brief.settings.output_name;
+        if (outputNames.has(outputName)) issues.push(`output_name duplique : ${outputName}`);
+        outputNames.add(outputName);
+      });
       const imageCounts = briefs.map(brief => brief.characters.filter(character => character.file).length);
       const totalSeconds = briefs.reduce(
         (sum, brief) => sum + brief.cuts.reduce((inner, cut) => inner + cut.seconds, 0),
@@ -2810,6 +2862,11 @@
 
     function fillShot(shot, data, index) {
       shot.querySelector(".shot-name").value = data?.name || `shot_${String(index + 1).padStart(2, "0")}`;
+      if (typeof data?.output_name === "string") shot.dataset.h3OutputName = data.output_name;
+      else delete shot.dataset.h3OutputName;
+      if (data && Object.prototype.hasOwnProperty.call(data, "output_name") && typeof data.output_name !== "string")
+        shot.dataset.h3OutputInvalid = "output_name HTML doit etre une chaine";
+      else delete shot.dataset.h3OutputInvalid;
       shot.querySelector(".shot-seed").value = data?.seed || (1125119286042028 + index);
       shot.querySelector(".shot-prompt").value = data?.positive || "";
       const orbit = data?.orbit || {};
@@ -2898,6 +2955,10 @@
 
     function renderCluster(nodes) {
       comfyNodes = nodes;
+      clusterMonitorNodes = nodes;
+      clusterMonitorChecked = new Date();
+      clusterMonitorError = false;
+      renderClusterMonitor();
       const select = document.querySelector("#clusterTarget");
       const previous = select.value;
       select.innerHTML = '<option value="auto">Automatique — répartir sur les PC disponibles</option>'
@@ -2914,20 +2975,80 @@
       }).join("") || '<div class="cluster-meta">Aucun PC configuré.</div>';
     }
 
-    async function refreshCluster() {
-      const button = document.querySelector("#refreshCluster");
-      button.classList.add("busy");
-      try {
-        const response = await fetch("/api/cluster-status");
-        if (!response.ok) throw new Error(`réponse ${response.status}`);
-        const data = await response.json();
-        renderCluster(data.nodes || []);
-        document.querySelector("#command").value = buildCommand();
-      } catch (error) {
-        document.querySelector("#clusterCards").innerHTML = `<div class="cluster-meta warn">Cluster indisponible : ${error.message}</div>`;
-      } finally {
-        button.classList.remove("busy");
+    let clusterMonitorNodes = null;
+    let clusterMonitorChecked = null;
+    let clusterMonitorError = false;
+    let clusterRefreshInFlight = null;
+
+    function renderClusterMonitor() {
+      const menu = document.querySelector("#clusterMonitor");
+      if (!menu) return;
+      const en = LANG === "en";
+      const label = document.querySelector("#clusterMonitorSummary");
+      const list = document.querySelector("#clusterMonitorList");
+      const note = document.querySelector("#clusterMonitorNote");
+      document.querySelector("#clusterMonitorTitle").textContent = en ? "Jobs by PC" : "Calculs par PC";
+      document.querySelector("#refreshClusterMonitor").textContent = en ? "Refresh" : "Actualiser";
+      list.replaceChildren();
+      if (clusterMonitorError || clusterMonitorNodes === null) {
+        menu.dataset.state = clusterMonitorError ? "error" : "loading";
+        const text = clusterMonitorError ? (en ? "Job status unavailable" : "Statut des calculs indisponible") : (en ? "Jobs: loading…" : "Calculs : chargement…");
+        if (label.textContent !== text) label.textContent = text;
+        note.textContent = clusterMonitorError ? (en ? "Unable to read the PC queues. Automatic retry every 10 seconds." : "Impossible de lire les files des PC. Nouvelle tentative automatique toutes les 10 secondes.") : (en ? "Reading ComfyUI queues…" : "Chargement des files ComfyUI…");
+        return;
       }
+      let running = 0, pending = 0, unavailable = 0;
+      for (const node of clusterMonitorNodes) {
+        const known = node.online === true && Number.isInteger(node.running) && node.running >= 0 && Number.isInteger(node.pending) && node.pending >= 0;
+        if (known) { running += node.running; pending += node.pending; } else unavailable++;
+        const row = document.createElement("li"); row.className = "cluster-menu-row";
+        const name = document.createElement("strong"); name.textContent = node.name || (en ? "Unnamed PC" : "PC sans nom");
+        const counts = document.createElement("div"); counts.className = "cluster-menu-counts";
+        if (known) {
+          const active = document.createElement("div"); active.className = node.running ? "has-running" : "";
+          active.textContent = `${node.running} ${en ? "running" : "en cours"}`;
+          const queued = document.createElement("div"); queued.textContent = `${node.pending} ${en ? "queued" : "en attente"}`;
+          counts.append(active, queued);
+        } else counts.textContent = node.online === false ? (en ? "Offline" : "Hors ligne") : (en ? "Status unknown" : "État inconnu");
+        row.append(name, counts); list.append(row);
+      }
+      menu.dataset.state = unavailable ? "partial" : running ? "active" : "idle";
+      const text = !clusterMonitorNodes.length ? (en ? "No PCs configured" : "Aucun PC configuré") :
+        `${running} ${en ? "running" : "en cours"} · ${pending} ${en ? "queued" : "en attente"}${unavailable ? (en ? " · partial" : " · partiel") : ""}`;
+      if (label.textContent !== text) label.textContent = text;
+      if (!clusterMonitorNodes.length) note.textContent = en ? "Configure your PCs in the cluster settings." : "Configure tes PC dans les réglages du cluster.";
+      else {
+        const checked = clusterMonitorChecked.toLocaleTimeString(en ? "en-GB" : "fr-FR");
+        note.textContent = (en ? `Updated ${checked} · automatic refresh every 10s.` : `Mis à jour à ${checked} · actualisation automatique toutes les 10 s.`)
+          + (unavailable ? (en ? " Totals include reachable PCs only." : " Totaux limités aux PC joignables.") : "");
+      }
+    }
+
+    function refreshCluster({ updateCommand = true } = {}) {
+      if (clusterRefreshInFlight) return clusterRefreshInFlight;
+      const buttons = [document.querySelector("#refreshCluster"), document.querySelector("#refreshClusterMonitor")];
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      buttons.forEach(button => { button.classList.add("busy"); button.disabled = true; });
+      clusterRefreshInFlight = (async () => {
+        try {
+          const response = await fetch("/api/cluster-status", { cache: "no-store", signal: controller.signal });
+          if (!response.ok) throw new Error(`réponse ${response.status}`);
+          const data = await response.json();
+          if (!Array.isArray(data.nodes)) throw new Error("réponse cluster invalide");
+          renderCluster(data.nodes);
+          if (updateCommand) document.querySelector("#command").value = buildCommand();
+        } catch (error) {
+          clusterMonitorError = true;
+          renderClusterMonitor();
+          document.querySelector("#clusterCards").textContent = LANG === "en" ? "Cluster unavailable" : "Cluster indisponible";
+        } finally {
+          clearTimeout(timeout);
+          buttons.forEach(button => { button.classList.remove("busy"); button.disabled = false; });
+          clusterRefreshInFlight = null;
+        }
+      })();
+      return clusterRefreshInFlight;
     }
 
     async function recoverInterruptedJobs(retry) {
@@ -2953,6 +3074,38 @@
       } finally {
         button.classList.remove("busy");
       }
+    }
+
+    async function refreshApiBatches() {
+      const target = document.querySelector("#apiBatchList");
+      try {
+        const response = await fetch("/api/batches?limit=10", { cache: "no-store" });
+        if (!response.ok) throw new Error(`API batch indisponible (${response.status})`);
+        const data = await response.json();
+        target.replaceChildren();
+        if (!data.batches?.length) { target.textContent = "Aucun batch API pour le moment."; return; }
+        for (const batch of data.batches) {
+          const button = document.createElement("button");
+          button.type = "button";
+          const counts = batch.summary || {};
+          button.textContent = `${batch.label || batch.batch_id.slice(0, 8)} — ${counts.done || 0} fini(s), ${counts.failed || 0} echec(s), ${counts.queued || 0} en file`;
+          const details = document.createElement("pre");
+          details.hidden = true;
+          button.addEventListener("click", async () => {
+            if (!details.hidden) { details.hidden = true; return; }
+            try {
+              const response = await fetch(`/api/batch/${batch.batch_id}`, { cache: "no-store" });
+              const current = await response.json();
+              details.textContent = current.jobs.map(job =>
+                `${job.scene}: ${job.status} — ${job.worker || ""} ${job.prompt_id || ""} ${job.detail || ""}\n` +
+                (job.outputs || []).map(output => `  ${output.local || output.filename}`).join("\n")
+              ).join("\n");
+              details.hidden = false;
+            } catch (error) { details.textContent = error.message; details.hidden = false; }
+          });
+          target.append(button, details);
+        }
+      } catch (error) { target.textContent = error.message; }
     }
 
     function refreshSizeOptions(resetToPreset = false) {
@@ -3480,6 +3633,7 @@
             return {
               rows: scenes.map((item, index) => ({
               name: item.name || item.title || `shot_${String(index + 1).padStart(2, "0")}`,
+              ...(Object.prototype.hasOwnProperty.call(item, "output_name") ? { output_name: item.output_name } : {}),
               seed: item.seed || "",
               positive: item.positive || item.prompt || item.text || "",
               cuts: Array.isArray(item.cuts) ? item.cuts : undefined,
@@ -4634,6 +4788,7 @@
     document.querySelector("#refreshCluster").addEventListener("click", refreshCluster);
     document.querySelector("#inspectJobs").addEventListener("click", () => recoverInterruptedJobs(false));
     document.querySelector("#recoverJobs").addEventListener("click", () => recoverInterruptedJobs(true));
+    document.querySelector("#refreshApiBatches").addEventListener("click", () => refreshApiBatches());
     document.querySelector("#clusterTarget").addEventListener("change", () => {
       document.querySelector("#command").value = buildCommand();
     });
@@ -5126,6 +5281,51 @@
       refresh();
     })();
 
+
+    document.querySelector("#refreshClusterMonitor").addEventListener("click", () => refreshCluster({ updateCommand: false }));
+    document.querySelector("#clusterMonitor").addEventListener("toggle", event => {
+      if (event.target.open) void refreshCluster({ updateCommand: false });
+    });
+    document.addEventListener("click", event => {
+      const menu = document.querySelector("#clusterMonitor");
+      if (menu.open && !menu.contains(event.target)) menu.open = false;
+    });
+    document.addEventListener("keydown", event => {
+      const menu = document.querySelector("#clusterMonitor");
+      if (event.key === "Escape" && menu.open) { menu.open = false; menu.querySelector("summary").focus(); }
+    });
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) void refreshCluster({ updateCommand: false });
+    });
+    setInterval(() => {
+      if (!document.hidden) void refreshCluster({ updateCommand: false });
+    }, 10000);
+    if (location.protocol.startsWith("http")) void refreshCluster({ updateCommand: false });
+    // Le pilotage par API voit les memes reglages H3 que la page ouverte. Le
+    // navigateur n'envoie que les valeurs de l'interface, jamais les images.
+    let lastApiSettings = "";
+    async function syncH3ApiSettings() {
+      if (!location.protocol.startsWith("http")) return;
+      const style = getGlobalStyleConfig();
+      const source = h3SettingsBase();
+      const defaults = Object.fromEntries([
+        "megapixels", "steps", "aspect_ratio", "sampler_name", "scheduler", "ref_image_size"
+      ].map(key => [key, source[key]]));
+      const body = JSON.stringify({
+        defaults, style_preset: style.value, style_prompt: style.value === "none" ? "" : style.prompt,
+        style_line: document.querySelector("#h3StyleLine").value.trim(),
+        copy_results_enabled: document.querySelector("#copyResults").checked
+      });
+      if (body === lastApiSettings) return;
+      try {
+        const response = await fetch("/api/settings/h3", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body
+        });
+        if (response.ok || response.status === 404) lastApiSettings = body;
+      } catch {}
+    }
+    setInterval(() => { if (!document.hidden) void syncH3ApiSettings(); }, 2500);
+    void syncH3ApiSettings();
   </script>
 </body>
 </html>

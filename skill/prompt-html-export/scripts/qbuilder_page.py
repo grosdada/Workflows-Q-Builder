@@ -62,8 +62,17 @@ def verifier(spec):
     noms = [s["name"] for s in scenes]
     if len(set(noms)) != len(noms):
         err.append("noms de scenes en double")
+    sorties = set()
     for sc in scenes:
         n, refs = sc["name"], sc.get("character_refs", [])
+        if "output_name" in sc:
+            raw = sc["output_name"]
+            sortie = re.sub(r"[^A-Za-z0-9._-]+", "_", raw.strip()).strip("_") if isinstance(raw, str) else ""
+            if not sortie or sortie in (".", ".."):
+                err.append(f"{n} : output_name invalide")
+            elif sortie in sorties:
+                err.append(f"{n} : output_name duplique ({sortie})")
+            sorties.add(sortie)
         if not re.fullmatch(r"[a-z0-9_-]+", n):
             err.append(f"{n} : nom a garder en minuscules, chiffres, - et _")
         tot = sum(c["seconds"] for c in sc["cuts"])
@@ -114,6 +123,8 @@ def construire(spec, base):
              "cuts": [{"seconds": c["seconds"], "text": c["text"], "speakers": c.get("speakers", [])} for c in sc["cuts"]]}
         if "seed" in sc:
             s["seed"] = sc["seed"]
+        if "output_name" in sc:
+            s["output_name"] = sc["output_name"]
         if sc.get("background_ref"):
             s["background_ref"] = sc["background_ref"]
         scenes.append(s)

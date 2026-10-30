@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="fr"><meta charset="utf-8"><title>Exemple Q-Builder H3-Orbital</title>
+<h1>Exemple H3-Orbital</h1>
+<article><h2>01_orbite_test</h2><p>Orbit 360° ; 73 images ; image start : depart.</p></article>
+<script type="application/json" data-prompts>
+{
+  "schema": "qbuilder-html/orbital-v1",
+  "engine": "orbital",
+  "orbit_defaults": {"length": 73, "megapixels": 0.58, "steps": 28, "output_prefix": "H3-Orbital/Test"},
+  "assets": {
+    "depart": {"filename": "depart.png", "data_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9X6x8AAAAASUVORK5CYII="}
+  },
+  "scenes": [{
+    "name": "01_orbite_test",
+    "seed": 904231,
+    "orbit": {"motion": "orbit360", "length": 73, "start_image": "depart", "character_refs": [], "set_refs": [], "prompt": "Constant camera speed, preserve the source scene."}
+  }]
+}
+</script>
+</html>

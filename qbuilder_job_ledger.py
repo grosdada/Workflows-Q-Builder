@@ -123,6 +123,10 @@ def recover(path, servers, retry=False):
     loads = reachable_loads(servers)
     report = []
     for job in data["jobs"]:
+        # Les batchs API ont leur propre surveillance et leur propre retry.
+        # Les reprendre ici aussi enverrait potentiellement un doublon.
+        if job.get("batch_id"):
+            continue
         if job.get("state") == "finished":
             continue
         state, detail = probe(job)

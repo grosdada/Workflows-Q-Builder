@@ -1,6 +1,7 @@
 import argparse
 import base64
 import copy
+import hashlib
 import json
 import mimetypes
 import os
@@ -75,7 +76,7 @@ def wait_prompt_result(server, prompt_id, timeout=86400, missing_grace=90):
 
 
 def copy_prompt_outputs(server, prompt_id, destination, timeout=86400):
-    """Attend un prompt ComfyUI puis telecharge toutes ses sorties."""
+    """Attend un prompt ComfyUI puis telecharge chaque sortie distincte une fois."""
     server = server.rstrip("/")
     deadline = time.time() + timeout
     entry = None
@@ -102,6 +103,7 @@ def copy_prompt_outputs(server, prompt_id, destination, timeout=86400):
     destination = Path(destination).expanduser()
     destination.mkdir(parents=True, exist_ok=True)
     saved = []
+    seen = set()
     for node_output in (entry.get("outputs") or {}).values():
         if not isinstance(node_output, dict):
             continue
@@ -109,19 +111,36 @@ def copy_prompt_outputs(server, prompt_id, destination, timeout=86400):
             for item in node_output.get(collection) or []:
                 if not isinstance(item, dict) or not item.get("filename"):
                     continue
+                source_key = (item["filename"], item.get("subfolder", ""), item.get("type", "output"))
+                if source_key in seen:
+                    continue
+                seen.add(source_key)
                 query = urllib.parse.urlencode({
-                    "filename": item["filename"],
-                    "subfolder": item.get("subfolder", ""),
-                    "type": item.get("type", "output"),
+                    "filename": source_key[0],
+                    "subfolder": source_key[1],
+                    "type": source_key[2],
                 })
                 target = destination / Path(item["filename"]).name
+                with urllib.request.urlopen(f"{server}/view?{query}", timeout=120) as response:
+                    content = response.read()
+                content_hash = hashlib.sha256(content).digest()
                 if target.exists():
                     stem, suffix, n = target.stem, target.suffix, 2
                     while target.exists():
+                        if target.stat().st_size == len(content):
+                            digest = hashlib.sha256()
+                            with target.open("rb") as existing:
+                                for chunk in iter(lambda: existing.read(1024 * 1024), b""):
+                                    digest.update(chunk)
+                            if digest.digest() == content_hash:
+                                break
                         target = destination / f"{stem}_{n}{suffix}"
                         n += 1
-                with urllib.request.urlopen(f"{server}/view?{query}", timeout=120) as response:
-                    target.write_bytes(response.read())
+                if target.exists():
+                    saved.append(target)
+                    print(f"  -> resultat deja present: {target}")
+                    continue
+                target.write_bytes(content)
                 saved.append(target)
                 print(f"  -> resultat copie: {target}")
     if not saved:

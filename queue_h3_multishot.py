@@ -203,10 +203,15 @@ def resolve_local_reference(entry, settings):
 
 
 def upload_h3_images(server, tdata, settings, cache, references=None):
-    """Upload character/background images to the selected remote ComfyUI."""
+    """Upload every Director media reference to the selected remote ComfyUI."""
     project = safe_slug(director.project_link(settings) or "qbuilder", "qbuilder")
     subfolder = f"musedirector/qbuilder_{project}"
-    entries = list(tdata.get("characters") or []) + [tdata.get("background")]
+    entries = (
+        list(tdata.get("characters") or [])
+        + [tdata.get("background")]
+        + list(tdata.get("refVideos") or [])
+        + list(tdata.get("refAudios") or [])
+    )
     uploaded = 0
     for entry in entries:
         if not entry or not entry.get("file"):
@@ -216,7 +221,7 @@ def upload_h3_images(server, tdata, settings, cache, references=None):
         remote = cache.get(key)
         if not remote:
             # Certains serveurs ComfyUI sous Windows echouent avec un HTTP 500
-            # pour les noms tres longs issus de prompts. L'image reste intacte
+            # pour les noms tres longs issus de prompts. Le media reste intact
             # localement : seule sa copie distante recoit un nom court,
             # deterministe et sans caracteres ambigus.
             fingerprint = hashlib.sha256(str(source.resolve()).encode("utf-8")).hexdigest()[:16]
@@ -348,8 +353,11 @@ def describe_comfy_rejection(exc):
     return "\n".join(lines)
 
 
-def queue_prompt(server, workflow, client_id):
-    payload = json.dumps({"client_id": client_id, "prompt": workflow}).encode("utf-8")
+def queue_prompt(server, workflow, client_id, front=False):
+    body = {"client_id": client_id, "prompt": workflow}
+    if front:
+        body["front"] = True
+    payload = json.dumps(body).encode("utf-8")
     request = urllib.request.Request(
         f"{server.rstrip('/')}/prompt",
         data=payload,
@@ -369,6 +377,8 @@ def main():
     parser.add_argument("--servers", default="", help="Comma-separated ComfyUI servers; scenes go to the least loaded reachable node.")
     parser.add_argument("--queue", action="store_true",
                         help="POST les workflows sur ComfyUI. Demande un template au format Export (API).")
+    parser.add_argument("--front", action="store_true",
+                        help="Place les nouveaux jobs devant les jobs en attente, sans interrompre le rendu courant.")
     parser.add_argument("--preview", action="store_true", help="Affiche le prompt six sections compile.")
     parser.add_argument("--dry-run", action="store_true", help="Valide et affiche, n'ecrit rien, n'envoie rien.")
     parser.add_argument("--copy-results", default="", help="Attend les rendus et copie leurs sorties dans ce dossier.")
@@ -475,7 +485,7 @@ def main():
                         "qui a les modeles et les noeuds H3."
                     )
             try:
-                result = queue_prompt(target_server, workflow, client_id)
+                result = queue_prompt(target_server, workflow, client_id, args.front)
             except urllib.error.HTTPError as exc:
                 # Une reponse HTTP n'est pas une panne de connexion : le serveur
                 # a repondu, et il explique pourquoi il refuse.
@@ -490,7 +500,10 @@ def main():
                 "kind": "h3", "name": name, "prompt_id": prompt_id, "server": target_server,
                 "workflow": copy.deepcopy(workflow), "references": references,
             })
-            queued.append({"name": name, "prompt_id": prompt_id, "server": target_server, "workflow": copy.deepcopy(workflow), "settings": settings, "source_tdata": source_tdata, "ledger_id": ledger["id"]})
+            queued.append({"name": name, "prompt_id": prompt_id, "server": target_server,
+                           "workflow": copy.deepcopy(workflow), "settings": settings,
+                           "source_tdata": source_tdata, "prefix": prefix,
+                           "ledger_id": ledger["id"]})
             print(f"  -> file ComfyUI {target_server}: {prompt_id}")
             time.sleep(0.2)
         else:
@@ -525,14 +538,23 @@ def main():
                 retry_server = min(alternatives, key=lambda server: loads.get(server, 0))
                 print(f"  ! {reason}; reprise unique sur {retry_server}")
                 retry_tdata = copy.deepcopy(job["source_tdata"])
-                upload_h3_images(retry_server, retry_tdata, job["settings"], ref_upload_cache)
+                retry_references = []
+                upload_h3_images(retry_server, retry_tdata, job["settings"],
+                                 ref_upload_cache, retry_references)
+                retry_workflow = copy.deepcopy(job["workflow"])
+                patch_api_workflow(retry_workflow, job["settings"], retry_tdata,
+                                   director._norm(job["prefix"]) if job["prefix"] else "")
                 try:
-                    retry = queue_prompt(retry_server, job["workflow"], client_id)
+                    retry = queue_prompt(retry_server, retry_workflow, client_id, args.front)
                     previous_server = job["server"]
                     previous_prompt_id = job["prompt_id"]
                     job["server"] = retry_server
                     job["prompt_id"] = retry.get("prompt_id", "unknown")
-                    update_job(ledger_path, job["ledger_id"], previous_server=previous_server, previous_prompt_id=previous_prompt_id, server=retry_server, prompt_id=job["prompt_id"], state="queued", retries=1)
+                    job["workflow"] = retry_workflow
+                    update_job(ledger_path, job["ledger_id"], previous_server=previous_server,
+                               previous_prompt_id=previous_prompt_id, server=retry_server,
+                               prompt_id=job["prompt_id"], workflow=retry_workflow,
+                               references=retry_references, state="queued", retries=1)
                     print(f"  -> nouvelle file ComfyUI: {job['prompt_id']}")
                     ok, entry, reason = wait_prompt_result(job["server"], job["prompt_id"])
                 except (urllib.error.HTTPError, urllib.error.URLError) as exc:

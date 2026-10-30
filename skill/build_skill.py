@@ -6,32 +6,36 @@ Un .skill est une archive zip contenant un dossier unique au nom du skill,
 avec SKILL.md a sa racine. Meme forme que les skills fournis par Anthropic.
 """
 
+import argparse
 import pathlib
 import zipfile
 
 HERE = pathlib.Path(__file__).resolve().parent
-NAME = "prompt-html-export"
-SOURCE = HERE / NAME
-TARGET = HERE.parent / f"{NAME}.skill"
 
 
 def main():
-    if not (SOURCE / "SKILL.md").exists():
-        raise SystemExit(f"SKILL.md introuvable dans {SOURCE}")
+    parser = argparse.ArgumentParser(description="Package a repository skill for Claude.")
+    parser.add_argument("name", nargs="?", default="prompt-html-export",
+                        choices=("prompt-html-export", "h3-orbital-html"))
+    name = parser.parse_args().name
+    source = HERE / name
+    target = HERE.parent / f"{name}.skill"
+    if not (source / "SKILL.md").exists():
+        raise SystemExit(f"SKILL.md introuvable dans {source}")
 
-    files = sorted(item for item in SOURCE.rglob("*") if item.is_file())
-    if TARGET.exists():
-        TARGET.unlink()
+    files = sorted(item for item in source.rglob("*") if item.is_file())
+    if target.exists():
+        target.unlink()
 
-    with zipfile.ZipFile(TARGET, "w", zipfile.ZIP_DEFLATED) as archive:
+    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
         for item in files:
             # Chemin dans l'archive : <nom-du-skill>/... , comme attendu a l'import.
-            archive.write(item, str(pathlib.Path(NAME) / item.relative_to(SOURCE)))
+            archive.write(item, str(pathlib.Path(name) / item.relative_to(source)))
 
-    size = TARGET.stat().st_size
-    print(f"{TARGET.name} : {len(files)} fichier(s), {size / 1024:.1f} Ko")
+    size = target.stat().st_size
+    print(f"{target.name} : {len(files)} fichier(s), {size / 1024:.1f} Ko")
     for item in files:
-        print("  " + str(item.relative_to(SOURCE)))
+        print("  " + str(item.relative_to(source)))
 
 
 if __name__ == "__main__":
